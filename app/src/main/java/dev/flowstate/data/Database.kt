@@ -104,6 +104,9 @@ interface FlowDao {
 
     @Query("DELETE FROM automations WHERE id=:id") suspend fun deleteAutomation(id: String)
 
+    @Query("UPDATE automations SET name=:name, updated=:at WHERE id=:id")
+    suspend fun renameAutomation(id: String, name: String, at: Long)
+
     @Query("SELECT * FROM locations") suspend fun locations(): List<LocationEntity>
 
     @Query("SELECT * FROM locations WHERE id=:id") suspend fun location(id: String): LocationEntity?
@@ -139,6 +142,11 @@ interface FlowDao {
     @Query("SELECT * FROM outbox") suspend fun outbox(): List<OutboxEntity>
 
     @Query("DELETE FROM outbox WHERE id=:id") suspend fun deleteOutbox(id: String)
+
+    @Query("DELETE FROM outbox WHERE executionId=:id") suspend fun deleteExecutionOutbox(id: String)
+
+    @Query("SELECT * FROM executions WHERE automationId=:id")
+    suspend fun executionsForAutomation(id: String): List<ExecutionEntity>
 
     @Insert suspend fun diagnostic(value: DiagnosticEntity)
 }

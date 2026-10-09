@@ -6,6 +6,29 @@ import java.time.temporal.TemporalAdjusters
 data class Occurrence(val at: Long, val key: String)
 
 object Scheduling {
+    fun acceptsDelivery(
+        t: Trigger,
+        at: Long,
+        key: String,
+        deliveryVersion: Int,
+        currentVersion: Int,
+        now: Long,
+        device: ZoneId,
+    ): Boolean {
+        if (
+            t.kind != "time" ||
+                deliveryVersion != currentVersion ||
+                at > now ||
+                next(t, at - 1, device)?.at != at ||
+                occurrenceKey(t, at, device) != key
+        )
+            return false
+        return now - at <= t.graceSeconds * 1000 ||
+            t.recurrence == "weeklyWindow" &&
+                t.catchUp == "window" &&
+                key == windowKey(t, now, device)
+    }
+
     fun zone(t: Trigger, device: ZoneId) = if (t.zone == "device") device else ZoneId.of(t.zone)
 
     fun validate(t: Trigger) {

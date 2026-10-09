@@ -11,6 +11,7 @@ android {
     defaultConfig {
         applicationId = "dev.flowstate"
         minSdk = providers.gradleProperty("flowstate.minSdk").orNull?.toInt() ?: 29
+        require(minSdk!! >= 29) { "FlowState requires Android API 29 or later" }
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
@@ -18,7 +19,16 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
+    val releaseStore = providers.environmentVariable("FLOWSTATE_STORE_FILE").orNull
+    signingConfigs {
+        if(!releaseStore.isNullOrBlank())create("personal") {
+            storeFile=file(releaseStore)
+            storePassword=providers.environmentVariable("FLOWSTATE_STORE_PASSWORD").get()
+            keyAlias=providers.environmentVariable("FLOWSTATE_KEY_ALIAS").get()
+            keyPassword=providers.environmentVariable("FLOWSTATE_KEY_PASSWORD").get()
+        }
+    }
+    buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"); if(!releaseStore.isNullOrBlank())signingConfig=signingConfigs.getByName("personal") } }
     lint { abortOnError = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }

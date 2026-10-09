@@ -9,7 +9,8 @@ const expr=(name,check)=>({type:'input_value',name,...(check?{check}: {})});
 const body=name=>({type:'input_statement',name});
 const scope=()=>dropdown('SCOPE',['LOCAL','AUTOMATION','GLOBAL']);
 function block(type,label,args,colour=175,output){
-  const def={type:'fs_'+type,message0:label+args.map((_,i)=>' %'+(i+1)).join(''),args0:args,colour,tooltip:label+' — configure fields and connect typed inputs. Version 1.',helpUrl:''};
+  const def={type:'fs_'+type,message0:label.split(' / ')[0],args0:[],colour,tooltip:label+' — configure fields and connect typed inputs. Version 1.',helpUrl:''};
+  args.forEach((arg,i)=>{def['message'+(i+1)]=arg.name.replaceAll('_',' ')+' %1';def['args'+(i+1)]=[arg];});
   if(output) def.output=output; else {def.previousStatement=null;def.nextStatement=null;}
   return def;
 }
@@ -44,6 +45,7 @@ export const definitions=[
 ];
 export function register(Blockly){
  Blockly.common.defineBlocksWithJsonArray(definitions);
+ for(const d of definitions){const init=Blockly.Blocks[d.type].init;Blockly.Blocks[d.type].init=function(){init.call(this);this.saveExtraState=()=>({version:1});this.loadExtraState=state=>{if(state.version!==undefined&&state.version!==1)throw Error('Unsupported block version');};};}
  const askInit=Blockly.Blocks.fs_ask.init;
  Blockly.Blocks.fs_ask.init=function(){
    askInit.call(this);this.choiceCount=0;
@@ -54,8 +56,8 @@ export function register(Blockly){
      this.choiceCount=count;
      for(let n=0;n<count;n++)this.getInput('CHOICE'+n).fieldRow[0].setValue('If '+(labels[n]||'choice '+(n+1)));
    };
-   this.saveExtraState=()=>({choices:this.choiceCount});
-   this.loadExtraState=state=>this.updateChoices(Math.min(100,state.choices||0));
+   this.saveExtraState=()=>({version:1,choices:this.choiceCount});
+   this.loadExtraState=state=>{if(state.version!==undefined&&state.version!==1)throw Error('Unsupported block version');this.updateChoices(Math.min(100,state.choices||0));};
    this.setOnChange(()=>{const kind=this.getFieldValue('KIND');this.updateChoices(kind==='choice'?Math.min(100,(this.getFieldValue('OPTIONS')||'').split('|').filter(x=>x.trim()).length):0);});
  };
  // The language has dynamic result types; native validation remains authoritative.

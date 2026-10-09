@@ -1,5 +1,6 @@
 package dev.flowstate.engine
 
+import java.math.BigDecimal
 import java.time.*
 import java.time.format.DateTimeFormatter
 
@@ -30,7 +31,7 @@ object Expressions {
                 val a = arg(0)
                 val b = arg(1)
                 require(a.type == b.type || numeric(a.type) && numeric(b.type))
-                val same = if (numeric(a.type)) a.number() == b.number() else a == b
+                val same = if (numeric(a.type)) compareNumbers(a, b) == 0 else a == b
                 Value.bool(if (e.op == "eq") same else !same)
             }
             "gt",
@@ -40,7 +41,7 @@ object Expressions {
                 val a = arg(0)
                 val b = arg(1)
                 val cmp =
-                    if (numeric(a.type) && numeric(b.type)) a.number().compareTo(b.number())
+                    if (numeric(a.type) && numeric(b.type)) compareNumbers(a, b)
                     else {
                         require(
                             a.type == b.type &&
@@ -63,26 +64,47 @@ object Expressions {
             "multiply",
             "divide",
             "mod" -> {
-                val a = arg(0).number()
-                val b = arg(1).number()
-                Value.number(
-                    when (e.op) {
-                        "add" -> a + b
-                        "subtract" -> a - b
-                        "multiply" -> a * b
-                        "divide" -> {
-                            require(b != 0.0)
-                            a / b
+                val left = arg(0)
+                val right = arg(1)
+                require(numeric(left.type) && numeric(right.type))
+                if (left.type == Type.INTEGER && right.type == Type.INTEGER && e.op != "divide") {
+                    val a = left.text.toLong()
+                    val b = right.text.toLong()
+                    Value.integer(
+                        when (e.op) {
+                            "add" -> Math.addExact(a, b)
+                            "subtract" -> Math.subtractExact(a, b)
+                            "multiply" -> Math.multiplyExact(a, b)
+                            else -> {
+                                require(b != 0L)
+                                a % b
+                            }
                         }
-                        else -> {
-                            require(b != 0.0)
-                            a % b
+                    )
+                } else {
+                    val a = left.number()
+                    val b = right.number()
+                    Value.number(
+                        when (e.op) {
+                            "add" -> a + b
+                            "subtract" -> a - b
+                            "multiply" -> a * b
+                            "divide" -> {
+                                require(b != 0.0)
+                                a / b
+                            }
+                            else -> {
+                                require(b != 0.0)
+                                a % b
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
-            "range" ->
-                Value.bool(arg(0).number() >= arg(1).number() && arg(0).number() <= arg(2).number())
+            "range" -> {
+                val value = arg(0)
+                Value.bool(compareNumbers(value, arg(1)) >= 0 && compareNumbers(value, arg(2)) <= 0)
+            }
             "empty" -> {
                 val v = arg(0)
                 Value.bool(
@@ -194,6 +216,11 @@ object Expressions {
     }
 
     fun numeric(t: Type) = t == Type.INTEGER || t == Type.DECIMAL
+
+    private fun compareNumbers(a: Value, b: Value): Int {
+        require(numeric(a.type) && numeric(b.type))
+        return BigDecimal(a.text).compareTo(BigDecimal(b.text))
+    }
 
     fun inTimeRange(now: LocalTime, start: LocalTime, end: LocalTime): Boolean =
         if (start <= end) now >= start && now < end else now >= start || now < end

@@ -32,8 +32,8 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         automatic: Boolean = false,
     ) = operations.withLock { startInternal(id, event, automatic) }
 
-    suspend fun trigger(id: String, key: String, at: Long) = operations.withLock {
-        triggerInternal(id, key, at)
+    suspend fun trigger(id: String, key: String, at: Long, version: Int) = operations.withLock {
+        triggerInternal(id, key, at, version)
     }
 
     suspend fun drive(id: String) = operations.withLock { driveInternal(id) }
@@ -55,6 +55,39 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
     }
 
     suspend fun reconcile() = operations.withLock { reconcileInternal() }
+
+    suspend fun importBackup(source: String) = operations.withLock {
+        val result = Backups(db).import(source)
+        reconcileInternal()
+        result
+    }
+
+    suspend fun saveLocation(value: LocationEntity) = operations.withLock {
+        require(
+            value.name.isNotBlank() &&
+                value.name.length <= 120 &&
+                value.latitude.isFinite() &&
+                value.longitude.isFinite() &&
+                value.latitude in -90.0..90.0 &&
+                value.longitude in -180.0..180.0 &&
+                value.radius.isFinite() &&
+                value.radius in 100f..100000f
+        )
+        dao.saveLocation(value)
+        reconcileInternal()
+    }
+
+    suspend fun deleteLocation(id: String) = operations.withLock {
+        require(
+            dao.automations().none {
+                codec.decodeFromString<Definition>(it.definition).trigger.locationId == id
+            }
+        ) {
+            "This location is referenced by an automation"
+        }
+        dao.deleteLocation(id)
+        reconcileInternal()
+    }
 
     suspend fun checklist(id: String, token: String, checked: Set<Int>) = operations.withLock {
         db.withTransaction {
@@ -168,12 +201,10 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             "Another workflow calls this automation"
         }
         platform.cancelAlarm("automation", id)
-        dao.active()
-            .filter { it.automationId == id }
-            .forEach {
-                platform.cancelAlarm("execution", it.id)
-                platform.cancelNotification(it.id)
-            }
+        dao.executionsForAutomation(id).forEach {
+            platform.cancelAlarm("execution", it.id)
+            platform.cancelAllExecutionNotifications(it.id)
+        }
         db.withTransaction {
             dao.deleteExecutions(id)
             dao.deleteAutomation(id)
@@ -188,13 +219,14 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         id: String,
         event: String = UUID.randomUUID().toString(),
         automatic: Boolean = false,
+        overrideDefinition: Definition? = null,
     ): String? {
         val rt = runtime()
         var execution: String? = null
         db.withTransaction {
             val a = dao.automation(id) ?: return@withTransaction
             if (automatic && !a.enabled || dao.byEvent("$id:$event") != null) return@withTransaction
-            val d = codec.decodeFromString<Definition>(a.definition)
+            val d = overrideDefinition ?: codec.decodeFromString<Definition>(a.definition)
             if (automatic && now - a.lastStarted < d.trigger.cooldownSeconds * 1000)
                 return@withTransaction
             require(dao.active().size < 32) { "Global active-execution limit reached" }
@@ -210,9 +242,14 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         return execution
     }
 
-    suspend fun triggerInternal(id: String, key: String, at: Long) {
+    suspend fun triggerInternal(id: String, key: String, at: Long, version: Int) {
         val a = dao.automation(id) ?: return
-        if (!a.enabled || at != a.nextAt) return
+        if (!a.enabled) return
+        val t = codec.decodeFromString<Definition>(a.definition).trigger
+        if (
+            !Scheduling.acceptsDelivery(t, at, key, version, a.version, now, ZoneId.systemDefault())
+        )
+            return
         startInternal(id, "time:$key", true)
         reconcileInternal()
     }
@@ -311,9 +348,10 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                     row.eventKey,
                 )
             )
+            dao.deleteExecutionOutbox(id)
         }
         platform.cancelAlarm("execution", id)
-        platform.cancelNotification(id)
+        platform.cancelAllExecutionNotifications(id)
     }
 
     suspend fun snoozeInternal(id: String, minutes: Long) {
@@ -375,8 +413,11 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
     }
 
     suspend fun geofenceInternal(id: String, transition: String, at: Long) {
+        var accepted = false
         db.withTransaction {
             val l = dao.location(id) ?: return@withTransaction
+            if (!l.enabled || at < l.eventAt) return@withTransaction
+            accepted = true
             if (at >= l.eventAt)
                 dao.saveLocation(
                     l.copy(
@@ -385,6 +426,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                     )
                 )
         }
+        if (!accepted) return
         dao.automations()
             .filter { it.enabled }
             .forEach { a ->
@@ -400,16 +442,43 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         enabled.forEach { a ->
             val t = codec.decodeFromString<Definition>(a.definition).trigger
             if (t.kind == "time") {
-                val missed = Scheduling.recovery(t, now, a.nextAt, device)
-                if (missed != null) {
-                    if (t.catchUp == "ask")
-                        dao.diagnostic(
-                            DiagnosticEntity(
-                                at = now,
-                                message = "Missed '${a.name}': start manually to catch up",
-                            )
+                val missedKey = a.nextAt?.let { Scheduling.occurrenceKey(t, it, device) }
+                val delivered = missedKey?.let { dao.byEvent("${a.id}:time:$it") != null } ?: false
+                if (
+                    a.nextAt?.let { it <= now } == true &&
+                        !delivered &&
+                        t.catchUp in setOf("skip", "record")
+                )
+                    dao.diagnostic(
+                        DiagnosticEntity(
+                            at = now,
+                            message =
+                                "Missed '${a.name}' occurrence $missedKey; policy ${t.catchUp}",
                         )
-                    else startInternal(a.id, "time:${missed.key}", true)
+                    )
+                val missed = Scheduling.recovery(t, now, a.nextAt, device)
+                if (missed != null && !delivered) {
+                    if (t.catchUp == "ask") {
+                        val original = codec.decodeFromString<Definition>(a.definition)
+                        val question =
+                            Node(
+                                "recovery-question",
+                                "ask",
+                                fields =
+                                    mapOf(
+                                        "KIND" to "yesno",
+                                        "TITLE" to "Run missed ${a.name}?",
+                                        "TIMEOUT" to "3600",
+                                    ),
+                                branches = mapOf("YES" to original.entry, "NO" to "recovery-skip"),
+                            )
+                        val ask =
+                            original.copy(
+                                entry = question.id,
+                                nodes = original.nodes + question + Node("recovery-skip", "stop"),
+                            )
+                        startInternal(a.id, "time:${missed.key}", true, ask)
+                    } else startInternal(a.id, "time:${missed.key}", true)
                 }
                 val next = Scheduling.next(t, now, device)
                 dao.saveAutomation(
@@ -421,7 +490,8 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                             else "Inexact scheduling",
                     )
                 )
-                if (next != null) platform.schedule("automation", a.id, next.at, next.key)
+                if (next != null)
+                    platform.schedule("automation", a.id, next.at, next.key, a.version)
                 else platform.cancelAlarm("automation", a.id)
             } else if (t.kind == "manual") dao.saveAutomation(a.copy(status = "Manual"))
         }

@@ -2,12 +2,12 @@ import * as Blockly from 'blockly/core';
 import * as En from 'blockly/msg/en';
 import {register,toolbox,initialWorkspace,setResources} from './catalogue.js';
 Blockly.setLocale(En);register(Blockly);
-const workspace=Blockly.inject('workspace',{toolbox,renderer:'zelos',trashcan:true,scrollbars:true,move:{scrollbars:true,drag:true,wheel:true},zoom:{controls:true,wheel:true,startScale:0.8,maxScale:2,minScale:0.3,scaleSpeed:1.15},grid:{spacing:24,length:3,colour:'#33473c',snap:true}});
+const workspace=Blockly.inject('workspace',{toolbox,media:'./media/',renderer:'zelos',trashcan:true,scrollbars:true,move:{scrollbars:true,drag:true,wheel:true},zoom:{controls:true,wheel:true,startScale:0.8,maxScale:2,minScale:0.3,scaleSpeed:1.15},grid:{spacing:24,length:3,colour:'#33473c',snap:true}});
 let dirty=false;
 function send(action){const state=Blockly.serialization.workspaces.save(workspace); window.FlowBridge?.postMessage(JSON.stringify({action,workspace:state}));}
 window.FlowEditor={
  resources(value){setResources(value);},
- load(state){Blockly.serialization.workspaces.load(state||initialWorkspace(),workspace);dirty=false;},
+ load(state){Blockly.Events.disable();try{Blockly.serialization.workspaces.load(state||initialWorkspace(),workspace);}finally{Blockly.Events.enable();}dirty=false;},
  highlight(id){workspace.highlightBlock(id);},
  errors(issues){for(const b of workspace.getAllBlocks(false))b.setWarningText(null);for(const i of issues){const b=workspace.getBlockById(i.block);b?.setWarningText(i.message+' — '+i.correction);}document.getElementById('status').textContent=issues.length?issues.map(x=>x.message).join('\n'):'Workflow is valid';},
  saved(){dirty=false;document.getElementById('status').textContent='Saved';},

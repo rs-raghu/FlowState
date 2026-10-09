@@ -1,5 +1,7 @@
 # Implementation status
 
+Latest milestone: queued schedule delivery is version checked; valid already queued alarms survive reconciliation. Cancellation removes pending worker delivery and stale notification outbox entries. Catch-up ASK uses a persisted interaction. Editor blocks carry v1 metadata and local media paths. Integer arithmetic preserves INTEGER types and exact Long precision, rejects overflow, and comparisons avoid Double rounding. CI and a local verification script are included. Historical notes below describe the state at each commit, not the current gap inventory.
+
 ## Stage 1 — architecture
 
 The remote repository was empty and has been cloned without overwriting existing files. Architecture, decisions, requirements traceability and original brief are recorded. Java 23 and Node are present. Android SDK and Gradle are being provisioned in ignored `.tools`.

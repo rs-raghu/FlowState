@@ -705,8 +705,7 @@ private fun SettingsScreen(
                             }
                             output.toString("UTF-8")
                         } ?: error("Cannot read backup")
-                    val count = Backups(vm.application.database).import(source)
-                    vm.reconcile()
+                    val count = vm.application.coordinator.importBackup(source)
                     vm.message.value = "Imported $count disabled automations"
                 }
         }

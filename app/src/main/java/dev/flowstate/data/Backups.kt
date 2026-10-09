@@ -24,7 +24,7 @@ data class Backup(
 )
 
 class Backups(private val db: FlowDatabase) {
-    suspend fun export(): String =
+    suspend fun export(): String = db.withTransaction {
         codec.encodeToString(
             Backup(
                 automations =
@@ -42,6 +42,7 @@ class Backups(private val db: FlowDatabase) {
                     },
             )
         )
+    }
 
     suspend fun import(source: String): Int {
         require(source.length <= 2_000_000) { "Backup exceeds 2 MB" }

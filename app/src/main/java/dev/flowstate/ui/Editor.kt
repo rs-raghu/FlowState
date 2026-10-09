@@ -96,13 +96,14 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                             put(
                                                 "locations",
                                                 resources(
-                                                    vm.locations.value.map { it.id to it.name }
+                                                    vm.dao.locations().map { it.id to it.name }
                                                 ),
                                             )
                                             put(
                                                 "workflows",
                                                 resources(
-                                                    vm.automations.value
+                                                    vm.dao
+                                                        .automations()
                                                         .filter { it.id != a.id }
                                                         .map { it.id to it.name }
                                                 ),
@@ -143,6 +144,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                                 )
                                                 dirty = false
                                                 evaluateJavascript("FlowEditor.saved()", null)
+                                                if (action == "copy") onClose()
                                             }
                                             "validate" ->
                                                 evaluateJavascript("FlowEditor.errors([])", null)

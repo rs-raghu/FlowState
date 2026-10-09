@@ -41,7 +41,13 @@ class Platform(private val context: Context) {
         Build.VERSION.SDK_INT < 31 ||
             context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
 
-    fun alarmIntent(kind: String, id: String, at: Long = 0, key: String = ""): PendingIntent {
+    fun alarmIntent(
+        kind: String,
+        id: String,
+        at: Long = 0,
+        key: String = "",
+        version: Int = 0,
+    ): PendingIntent {
         val intent =
             Intent(context, AlarmReceiver::class.java)
                 .setData(Uri.parse("flowstate://alarm/$kind/$id"))
@@ -49,6 +55,7 @@ class Platform(private val context: Context) {
                 .putExtra("id", id)
                 .putExtra("at", at)
                 .putExtra("key", key)
+                .putExtra("version", version)
         return PendingIntent.getBroadcast(
             context,
             0,
@@ -60,11 +67,13 @@ class Platform(private val context: Context) {
     fun cancelAlarm(kind: String, id: String) {
         context.getSystemService(AlarmManager::class.java).cancel(alarmIntent(kind, id))
         WorkManager.getInstance(context).cancelUniqueWork("timer:$kind:$id")
+        if (kind == "automation")
+            WorkManager.getInstance(context).cancelAllWorkByTag("automation:$id")
     }
 
-    fun schedule(kind: String, id: String, at: Long, key: String = "") {
+    fun schedule(kind: String, id: String, at: Long, key: String = "", version: Int = 0) {
         val manager = context.getSystemService(AlarmManager::class.java)
-        val pi = alarmIntent(kind, id, at, key)
+        val pi = alarmIntent(kind, id, at, key, version)
         try {
             if (exact()) manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             else manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
@@ -72,13 +81,15 @@ class Platform(private val context: Context) {
             manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
         }
         // Independent durable fallback; duplicated delivery is filtered in the coordinator.
-        val data = workDataOf("kind" to kind, "id" to id, "at" to at, "key" to key)
+        val data =
+            workDataOf("kind" to kind, "id" to id, "at" to at, "key" to key, "version" to version)
         WorkManager.getInstance(context)
             .enqueueUniqueWork(
                 "timer:$kind:$id",
                 ExistingWorkPolicy.REPLACE,
                 OneTimeWorkRequestBuilder<EngineWorker>()
                     .setInputData(data)
+                    .addTag("$kind:$id")
                     .setInitialDelay(
                         (at - System.currentTimeMillis()).coerceAtLeast(0),
                         TimeUnit.MILLISECONDS,
@@ -94,6 +105,7 @@ class Platform(private val context: Context) {
         at: Long = 0,
         response: String = "",
         token: String = "",
+        version: Int = 0,
     ) {
         val data =
             workDataOf(
@@ -103,12 +115,16 @@ class Platform(private val context: Context) {
                 "at" to at,
                 "response" to response,
                 "token" to token,
+                "version" to version,
             )
         WorkManager.getInstance(context)
             .enqueueUniqueWork(
                 "event:$kind:$id:$key:$token",
                 ExistingWorkPolicy.APPEND_OR_REPLACE,
-                OneTimeWorkRequestBuilder<EngineWorker>().setInputData(data).build(),
+                OneTimeWorkRequestBuilder<EngineWorker>()
+                    .setInputData(data)
+                    .addTag("$kind:$id")
+                    .build(),
             )
     }
 
@@ -175,6 +191,11 @@ class Platform(private val context: Context) {
 
     fun cancelNotification(execution: String) {
         NotificationManagerCompat.from(context).cancel(execution, 1)
+    }
+
+    fun cancelAllExecutionNotifications(execution: String) {
+        cancelNotification(execution)
+        NotificationManagerCompat.from(context).cancel("$execution:message", 1)
     }
 
     fun notification(execution: String, effect: Effect): Boolean {

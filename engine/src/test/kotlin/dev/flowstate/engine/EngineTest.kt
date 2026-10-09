@@ -7,6 +7,67 @@ import kotlinx.serialization.encodeToString
 import org.junit.Test
 
 class EngineTest {
+    @Test
+    fun integerArithmeticPreservesTypeAndPrecision() {
+        val context = EvaluationContext(0, "UTC", emptyMap(), emptyMap(), "a")
+        fun literal(n: Long) = Expr("literal", Value.integer(n))
+        fun evaluate(op: String, a: Long, b: Long) =
+            Expressions.evaluate(Expr(op, args = listOf(literal(a), literal(b))), context)
+        assertEquals(Value.integer(9007199254740994), evaluate("add", 9007199254740993, 1))
+        assertEquals(Value.bool(false), evaluate("eq", 9007199254740993, 9007199254740992))
+        assertEquals(Value.bool(true), evaluate("gt", 9007199254740993, 9007199254740992))
+        assertFailsWith<ArithmeticException> { evaluate("add", Long.MAX_VALUE, 1) }
+        assertEquals(Type.DECIMAL, evaluate("divide", 5, 2).type)
+        val d =
+            Definition(
+                id = "a",
+                entry = "set",
+                variables = listOf(Variable("count", Type.INTEGER, Scope.LOCAL)),
+                nodes =
+                    listOf(
+                        Node(
+                            "set",
+                            "set",
+                            fields = mapOf("NAME" to "count", "SCOPE" to "LOCAL"),
+                            expressions =
+                                mapOf("VALUE" to Expr("add", args = listOf(literal(1), literal(2)))),
+                        )
+                    ),
+            )
+        assertTrue(Compiler.validate(d).isEmpty())
+        assertEquals(
+            Value.integer(3),
+            runtime.tick(runtime.start("integer", d, 0), 0, "UTC").execution.locals["count"],
+        )
+    }
+
+    @Test
+    fun queuedAlarmSurvivesReconciliationButRejectsEditedVersions() {
+        val t = Trigger(kind = "time")
+        val z = ZoneId.of("UTC")
+        val at = Instant.parse("2026-10-09T09:00:00Z").toEpochMilli()
+        val key = Scheduling.occurrenceKey(t, at, z)
+        assertTrue(Scheduling.acceptsDelivery(t, at, key, 1, 1, at + 60000, z))
+        assertFalse(Scheduling.acceptsDelivery(t, at, key, 1, 2, at + 60000, z))
+        assertFalse(Scheduling.acceptsDelivery(t, at, key, 1, 1, at + 7200000, z))
+    }
+
+    @Test
+    fun oldWeeklyWindowDeliveryCannotCauseCatchupStorm() {
+        val t =
+            Trigger(
+                kind = "time",
+                recurrence = "weeklyWindow",
+                times = listOf("00:00"),
+                catchUp = "window",
+            )
+        val z = ZoneId.of("UTC")
+        val at = Instant.parse("2026-10-09T00:00:00Z").toEpochMilli()
+        val key = Scheduling.occurrenceKey(t, at, z)
+        assertTrue(Scheduling.acceptsDelivery(t, at, key, 1, 1, at + 2 * 86400000, z))
+        assertFalse(Scheduling.acceptsDelivery(t, at, key, 1, 1, at + 9 * 86400000, z))
+    }
+
     private val runtime = Runtime()
 
     private fun def(vararg nodes: Node) =

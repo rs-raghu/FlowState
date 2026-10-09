@@ -55,8 +55,8 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun rename(a: AutomationEntity, name: String) = work {
-        require(name.isNotBlank())
-        dao.saveAutomation(a.copy(name = name, updated = System.currentTimeMillis()))
+        require(name.isNotBlank() && name.length <= 120)
+        dao.renameAutomation(a.id, name, System.currentTimeMillis())
     }
 
     fun cancel(id: String) = work { application.coordinator.cancel(id) }
@@ -96,7 +96,7 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
         require(radius.isFinite() && radius in 100f..100000f)
         val now = System.currentTimeMillis()
         val old = id?.let { dao.location(it) }
-        dao.saveLocation(
+        application.coordinator.saveLocation(
             LocationEntity(
                 id ?: UUID.randomUUID().toString(),
                 name,
@@ -109,7 +109,6 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
                 now,
             )
         )
-        application.coordinator.reconcile()
     }
 
     fun deleteLocation(l: LocationEntity) = work {
@@ -123,8 +122,7 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
         ) {
             "This location is referenced by an automation"
         }
-        dao.deleteLocation(l.id)
-        application.coordinator.reconcile()
+        application.coordinator.deleteLocation(l.id)
     }
 
     companion object {

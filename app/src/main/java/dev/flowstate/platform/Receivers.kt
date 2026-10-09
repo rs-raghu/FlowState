@@ -15,6 +15,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 intent.getStringExtra("id") ?: return,
                 intent.getStringExtra("key") ?: "",
                 intent.getLongExtra("at", 0),
+                version = intent.getIntExtra("version", 0),
             )
     }
 }
@@ -84,6 +85,7 @@ class EngineWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                         inputData.getString("id")!!,
                         inputData.getString("key") ?: "",
                         inputData.getLong("at", 0),
+                        inputData.getInt("version", 0),
                     )
                 "execution" -> app.coordinator.drive(inputData.getString("id")!!)
                 "response" ->

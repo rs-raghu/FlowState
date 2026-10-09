@@ -94,6 +94,11 @@ object Compiler {
                 "Remove disabled blocks before compiling"
             }
             val key = b["id"]?.jsonPrimitive?.content ?: error("Missing block ID")
+            val blockVersion = b["extraState"]?.jsonObject?.get("version")
+            if (blockVersion != null && blockVersion.jsonPrimitive.intOrNull != 1)
+                throw ValidationException(
+                    listOf(Issue("BLOCK_VERSION", "Unsupported block version", key))
+                )
             require(seen.add(key)) { "Duplicate block ID $key" }
             return key
         }
@@ -176,6 +181,7 @@ object Compiler {
             val bid = identify(first, depth)
             val type = first["type"]!!.jsonPrimitive.content
             val f = fields(first)
+            require(f.values.all { it.length <= 16384 }) { "Block fields exceed 16 KB" }
             if (type == "fs_variable") {
                 vars +=
                     Variable(
@@ -401,8 +407,8 @@ object Compiler {
                 "add",
                 "subtract",
                 "multiply",
+                "mod" -> if (types.all { it == Type.INTEGER }) Type.INTEGER else Type.DECIMAL
                 "divide",
-                "mod",
                 "toNumber" -> Type.DECIMAL
                 "weekday",
                 "month",
