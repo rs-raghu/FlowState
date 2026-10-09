@@ -1,0 +1,10 @@
+.tools/
+.gradle/
+**/build/
+local.properties
+node_modules/
+*.jks
+*.keystore
+.idea/
+*.hprof
+captures/
