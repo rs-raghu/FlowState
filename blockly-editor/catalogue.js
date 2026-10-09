@@ -30,7 +30,7 @@ export const definitions=[
  block('call','CALL workflow / input variable name / input value / output local variable name',[resource('WORKFLOW','workflow'),text('INPUTNAME'),expr('INPUT'),text('OUTPUTNAME')],120),
  block('try','TRY / handle error',[body('DO'),body('ERROR')],120),
  block('parallel','BRANCHES (A completes then B; shared variables) / A / B',[body('A'),body('B')],120),
- block('variable','DECLARE name / type / scope',[text('NAME','answer'),dropdown('TYPE',types),scope()],330),
+ block('variable','DECLARE name / type / scope / default (blank = null)',[text('NAME','answer'),dropdown('TYPE',types),scope(),text('DEFAULT')],330),
  block('set','SET variable / scope / value',[text('NAME','answer'),scope(),expr('VALUE')],330),
  block('delete','RESET variable value / scope',[text('NAME','answer'),scope()],330),
  block('get','GET variable / scope',[text('NAME','answer'),scope()],330,'Any'),

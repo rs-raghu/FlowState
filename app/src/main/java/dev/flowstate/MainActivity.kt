@@ -9,9 +9,15 @@ import dev.flowstate.ui.*
 
 class MainActivity : ComponentActivity() {
     private val vm by lazy { ViewModelProvider(this)[FlowViewModel::class.java] }
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState); enableEdgeToEdge()
-        setContent { FlowState(vm,intent.getStringExtra("execution")) }
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent { FlowState(vm, intent.getStringExtra("execution")) }
     }
-    override fun onResume() { super.onResume(); vm.reconcile() }
+
+    override fun onResume() {
+        super.onResume()
+        vm.reconcile()
+    }
 }

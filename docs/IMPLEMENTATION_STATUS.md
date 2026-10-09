@@ -32,3 +32,7 @@ Five sections, creation templates, search/filter/sort, rename/copy/delete protec
 ## Audit improvements
 Added bounded JSON preflight, stricter expression checks, serialized coordinator operations, snooze wake correction, separate informational notification identity, consistent catch-up IDs, per-choice dynamic Blockly branches, saved-resource dropdowns, reusable input/return values and transitive definition snapshots. JVM tests now include JSON bounds, recovery identity, reusable snapshots and fourth-choice routing. An offline Natural Earth geographic map with tap placement and radius rendering is implemented; no street tiles or search provider. Latest Android build is still running after repairing copied dependency artifacts inside the workspace cache.
 
+
+## Verified build milestone
+2026-10-09: native Kotlin compilation, 20 JVM tests, debug APK assembly, Android lint, instrumentation-test compilation and unsigned R8 release assembly all succeeded. Blockly frontend: 3 tests passed and assets rebuilt. Android instrumentation tests were compiled, not executed; no device/emulator is connected. Permission revocation, Android-10 import compatibility and reactive editor state lint defects were corrected without suppressing checks. Kotlin sources formatted with ktfmt 0.64. Debug APK exists at app/build/outputs/apk/debug/app-debug.apk. The app is still not accepted as production-complete: remaining specification gaps and device release gates follow in the status inventory.
+
