@@ -58,6 +58,8 @@ File/function: Platform permission/scheduling/notification/register functions; S
 
 ## Open defects, requirements and risks
 
+Latest hosted verification: run 37971159000 (2f36bfd) passed build/editor/core checks, ten native cases and both separate force-stop/reopen phases on API 29/36. AUD-013's verification boundary now includes actual new-process/version/token/wake restoration; physical alarm/reboot, geofence, battery and accessibility gates remain open.
+
 ### AUD-013 — HIGH — Android acceptance has not executed
 
 Files/classes: app Android sources, native tests, TESTING.md AT table. API 29/36 KVM emulators now install/launch the app and pass nine database/UI/interaction tests (run 37967271781), including recreation, persisted progress and separate branch notifications/responses. This exposed and verified fixes for AUD-022/023. Physical process death/reboot, geofence movement, permission revocation, accessibility and battery acceptance remain **OPEN**; emulator smoke coverage does not certify all 30 gates.

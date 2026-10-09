@@ -36,6 +36,8 @@ R8 release assembly succeeded. No signing credentials were supplied; this artifa
 
 ## Build/test evidence
 
+Latest hosted source run [37971159000](https://github.com/rs-raghu/FlowState/actions/runs/37971159000) for 2f36bfd completed **successfully**: editor/core/build checks, ten standard native tests and both force-stop/reopen recovery phases on each API 29/36 image. Debug APK and both sets of device reports are attached to that run. Local APK hashes above remain the separately inspected local examples build; test/harness/documentation commits do not change its application source.
+
 Last full local Gradle invocation succeeded in 1m 51s: `:engine:test :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleRelease`, 118 actionable tasks, with two workers. 49 JVM tests pass, four frontend tests pass, ten native tests compile; nine then-current tests passed on API 29/36 in run 37967271781, and lint has zero errors/25 warnings. Kotlin formatting dry-run/fail-if-changed passes with ktfmt 0.64. See TESTING.md for exact coverage and acceptance procedures.
 
 Local reports:
@@ -46,4 +48,4 @@ Local reports:
 
 GitHub Actions run [37967271781](https://github.com/rs-raghu/FlowState/actions/runs/37967271781) for `dd18944` executes the native build and API 29/36 emulator jobs. Both device jobs passed all nine then-current tests. Initial run 37965241810 exposed two defects now repaired and verified. Earlier build-only runs (including c201487) completed successfully after SDK provisioning was corrected. Each emulator job retains test reports, and the build job uploads the debug APK.
 
-No local device/AVD is available. Remote API 29/36 instrumentation installs and launches the debug app; the repaired nine-test run 37967271781 passed on both images; the tenth bundled-example case awaits execution. Physical process-death/reboot, geofence movement and battery/permission acceptance remain open. Full specification acceptance remains open. APKs and local SDK/cache files are ignored by Git; source, tests, documentation and CI are pushed to the requested repository.
+No local device/AVD is available. Remote API 29/36 instrumentation installs and launches the debug app; the repaired nine-test run 37967271781 passed on both images; all ten standard tests and both force-stop/reopen phases passed on both images in run 37971159000. Physical process-death/reboot, geofence movement and battery/permission acceptance remain open. Full specification acceptance remains open. APKs and local SDK/cache files are ignored by Git; source, tests, documentation and CI are pushed to the requested repository.

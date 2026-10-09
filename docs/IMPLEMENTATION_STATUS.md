@@ -28,7 +28,7 @@ As of 2026-10-09, FlowState has a buildable native Android implementation and ve
 - ktfmt 0.64: Kotlin language style, dry-run with fail-if-changed passes.
 - Debug APK: package dev.flowstate, version 0.1.0, min API 29/target 36, MAIN activity, valid APK Signature Scheme v2 debug signature. Merged manifest has no Internet permission, disables automatic backup/cleartext and keeps app operational receivers non-exported. Library components and permissions are covered in SECURITY.md.
 - GitHub Actions now passes after explicitly provisioning sdkmanager and pinning supported actions. Exact run/artifact evidence is recorded in BUILD_ARTIFACTS.md.
-- Initial CI instrumentation executed eight tests on each of API 29/36: six passed, final-question completion and duplicate-event rejection failed. Both defects were repaired with regressions; nine native tests then passed on both API 29/36 in run 37967271781. The bundled-example stage then passed all ten native tests on both images in run 37968384343. A separate two-phase force-stop/reopen test compiles and awaits execution. Physical end-to-end acceptance remains pending.
+- Initial CI instrumentation executed eight tests on each of API 29/36: six passed, final-question completion and duplicate-event rejection failed. Both defects were repaired with regressions; nine native tests then passed on both API 29/36 in run 37967271781. The bundled-example stage then passed all ten native tests on both images in run 37968384343. Both force-stop/reopen phases also pass on API 29/36 in run 37971159000. Physical end-to-end acceptance remains pending.
 
 ## Remaining release work
 
