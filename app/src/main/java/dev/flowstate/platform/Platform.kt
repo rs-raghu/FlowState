@@ -79,6 +79,6 @@ class Platform(private val context: Context) {
             n.addAction(0,"Open choices",open)
             i.deadline?.let { n.setTimeoutAfter((it-System.currentTimeMillis()).coerceAtLeast(1)) }
         }
-        NotificationManagerCompat.from(context).notify(execution,1,n.build()); return true
+        NotificationManagerCompat.from(context).notify(if(effect.interaction==null) "$execution:message" else execution,1,n.build()); return true
     }
 }

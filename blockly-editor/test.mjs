@@ -10,3 +10,6 @@ test('every custom block survives JSON serialization',()=>{
 test('templates roundtrip stable instance IDs and connections',()=>{
  const a=new Blockly.Workspace();Blockly.serialization.workspaces.load(initialWorkspace('checklist'),a);const saved=Blockly.serialization.workspaces.save(a);const b=new Blockly.Workspace();Blockly.serialization.workspaces.load(saved,b);assert.deepEqual(Blockly.serialization.workspaces.save(b),saved);assert.equal(b.getTopBlocks()[0].getNextBlock().type,'fs_checklist');a.dispose();b.dispose();
 });
+test('fourth choice retains its independently connected branch',()=>{
+ const a=new Blockly.Workspace();const ask=a.newBlock('fs_ask');ask.setFieldValue('A|B|C|D','OPTIONS');ask.updateChoices(4);const action=a.newBlock('fs_message');ask.getInput('CHOICE3').connection.connect(action.previousConnection);const state=Blockly.serialization.workspaces.save(a);const b=new Blockly.Workspace();Blockly.serialization.workspaces.load(state,b);const restored=b.getBlockById(ask.id);assert.equal(restored.getInputTargetBlock('CHOICE3').id,action.id);a.dispose();b.dispose();
+});

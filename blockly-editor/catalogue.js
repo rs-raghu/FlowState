@@ -1,4 +1,7 @@
 export const types = ['BOOLEAN','INTEGER','DECIMAL','STRING','INSTANT','DURATION','LIST','NULL'];
+let locations=[],workflows=[];
+export function setResources(value){locations=value.locations||[];workflows=value.workflows||[];}
+const resource=(name,kind)=>({type:'field_dropdown',name,options:()=>{const list=kind==='location'?locations:workflows;return list.length?list.map(x=>[x.name,x.id]):[['Select a saved '+kind,'']];}});
 const text=(name,value='')=>({type:'field_input',name,text:value});
 const number=(name,value,min=0,max=31536000)=>({type:'field_number',name,value,min,max,precision:1});
 const dropdown=(name,values)=>({type:'field_dropdown',name,options:values.map(x=>[x,x])});
@@ -12,7 +15,7 @@ function block(type,label,args,colour=175,output){
 }
 export const definitions=[
  {...block('trigger','WHEN kind / times / zone / repeat / days / dates / interval / start / end / location / event / cooldown / catch-up / window day',[
- dropdown('KIND',['manual','time','location']),text('TIMES','09:00'),text('ZONE','device'),dropdown('RECURRENCE',['daily','weekdays','weekly','monthly','dates','interval','once','weeklyWindow']),text('DAYS','1,2,3,4,5,6,7'),text('DATES'),number('INTERVAL',1,1,3650),text('START'),text('END'),text('LOCATION'),dropdown('TRANSITION',['enter','exit','dwell']),number('COOLDOWN',300),dropdown('CATCHUP',['skip','grace','window','record','ask']),number('WINDOWDAY',5,1,7)],40),previousStatement:undefined},
+ dropdown('KIND',['manual','time','location']),text('TIMES','09:00'),text('ZONE','device'),dropdown('RECURRENCE',['daily','weekdays','weekly','monthly','dates','interval','once','weeklyWindow']),text('DAYS','1,2,3,4,5,6,7'),text('DATES'),number('INTERVAL',1,1,3650),text('START'),text('END'),resource('LOCATION','location'),dropdown('TRANSITION',['enter','exit','dwell']),number('COOLDOWN',300),dropdown('CATCHUP',['skip','grace','window','record','ask']),number('WINDOWDAY',5,1,7)],40),previousStatement:undefined},
  block('message','SHOW MESSAGE title / body',[text('TITLE','Reminder'),text('BODY','Take your essentials')]),
  block('ask','ASK kind / title / choices separated by | / response variable / scope / timeout seconds (0 never) / min / max / first choice or valid input / second / other / cancel / timeout',[dropdown('KIND',['choice','yesno','text','number','confirm']),text('TITLE','Where are you going?'),text('OPTIONS','Class|Gym|Other'),text('NAME'),scope(),number('TIMEOUT',900),text('MIN'),text('MAX'),body('YES'),body('NO'),body('OTHER'),body('CANCEL'),body('TIMEOUT')],275),
  block('checklist','CHECKLIST title / items separated by | (?optional) / timeout / complete / cancel / timeout',[text('TITLE','Essentials'),text('OPTIONS','Keys|Wallet|?Water'),number('TIMEOUT',900),body('DONE'),body('CANCEL'),body('TIMEOUT')],275),
@@ -23,8 +26,8 @@ export const definitions=[
  block('waitCondition','WAIT FOR condition / check seconds / max checks / then',[expr('TEST','Boolean'),number('SECONDS',60,60),number('LIMIT',60,1,1000),body('DO')],55),
  block('repeat','REPEAT bounded times / body',[number('LIMIT',3,1,1000),body('DO')],120),
  block('while','WHILE condition / max iterations / body',[expr('TEST','Boolean'),number('LIMIT',100,1,1000),body('DO')],120),
- block('break','BREAK loop',[],120),block('continue','CONTINUE loop',[],120),block('stop','STOP workflow',[],120),block('return','RETURN to caller',[],120),
- block('call','CALL workflow ID',[text('WORKFLOW')],120),
+ block('break','BREAK loop',[],120),block('continue','CONTINUE loop',[],120),block('stop','STOP workflow',[],120),block('return','RETURN value (optional)',[expr('VALUE')],120),
+ block('call','CALL workflow / input variable name / input value / output local variable name',[resource('WORKFLOW','workflow'),text('INPUTNAME'),expr('INPUT'),text('OUTPUTNAME')],120),
  block('try','TRY / handle error',[body('DO'),body('ERROR')],120),
  block('parallel','BRANCHES (A completes then B; shared variables) / A / B',[body('A'),body('B')],120),
  block('variable','DECLARE name / type / scope',[text('NAME','answer'),dropdown('TYPE',types),scope()],330),
@@ -41,6 +44,20 @@ export const definitions=[
 ];
 export function register(Blockly){
  Blockly.common.defineBlocksWithJsonArray(definitions);
+ const askInit=Blockly.Blocks.fs_ask.init;
+ Blockly.Blocks.fs_ask.init=function(){
+   askInit.call(this);this.choiceCount=0;
+   this.updateChoices=function(count){
+     const labels=(this.getFieldValue('OPTIONS')||'').split('|').filter(x=>x.trim());
+     for(let n=this.choiceCount;n<count;n++)this.appendStatementInput('CHOICE'+n).appendField('Choice '+(n+1));
+     for(let n=this.choiceCount-1;n>=count;n--)this.removeInput('CHOICE'+n);
+     this.choiceCount=count;
+     for(let n=0;n<count;n++)this.getInput('CHOICE'+n).fieldRow[0].setValue('If '+(labels[n]||'choice '+(n+1)));
+   };
+   this.saveExtraState=()=>({choices:this.choiceCount});
+   this.loadExtraState=state=>this.updateChoices(Math.min(100,state.choices||0));
+   this.setOnChange(()=>{const kind=this.getFieldValue('KIND');this.updateChoices(kind==='choice'?Math.min(100,(this.getFieldValue('OPTIONS')||'').split('|').filter(x=>x.trim()).length):0);});
+ };
  // The language has dynamic result types; native validation remains authoritative.
  for(const name of ['fs_value','fs_expr','fs_get']) {
    const original=Blockly.Blocks[name].init;

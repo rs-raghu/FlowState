@@ -11,7 +11,7 @@ class Backups(private val db: FlowDatabase) {
     suspend fun export(): String=codec.encodeToString(Backup(automations=db.dao().automations().map { BackupAutomation(it.id,it.name,it.workspace) },locations=db.dao().locations().map { BackupLocation(it.id,it.name,it.latitude,it.longitude,it.radius,it.description) }))
     suspend fun import(source: String): Int {
         require(source.length<=2_000_000) { "Backup exceeds 2 MB" }
-        val backup=codec.decodeFromString<Backup>(source); require(backup.schema==1); require(backup.automations.size<=500 && backup.locations.size<=500)
+        val backup=codec.decodeFromString<Backup>(SafeInput.json(source)); require(backup.schema==1); require(backup.automations.size<=500 && backup.locations.size<=500)
         require(backup.automations.map { it.id }.toSet().size==backup.automations.size); require(backup.locations.map { it.id }.toSet().size==backup.locations.size)
         val dao=db.dao(); val now=System.currentTimeMillis()
         backup.locations.forEach { require(it.latitude.isFinite() && it.longitude.isFinite() && it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 && it.radius.isFinite() && it.radius in 100f..100000f && it.name.isNotBlank()); java.util.UUID.fromString(it.id) }

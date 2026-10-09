@@ -37,7 +37,11 @@ import java.util.UUID
                         try {
                             val payload=codec.parseToJsonElement(data).jsonObject
                             when(payload["action"]?.jsonPrimitive?.content) {
-                                "ready" -> evaluateJavascript("FlowEditor.load(${a.workspace})",null)
+                                "ready" -> {
+                                    fun resources(items: List<Pair<String,String>>) = buildJsonArray { items.forEach { (id,name) -> add(buildJsonObject { put("id",id);put("name",name) }) } }
+                                    val r=buildJsonObject { put("locations",resources(vm.locations.value.map {it.id to it.name}));put("workflows",resources(vm.automations.value.filter {it.id!=a.id}.map {it.id to it.name})) }
+                                    evaluateJavascript("FlowEditor.resources($r);FlowEditor.load(${a.workspace})",null)
+                                }
                                 "dirty" -> dirty=true
                                 "close" -> close()
                                 "save","copy","validate","simulate" -> {

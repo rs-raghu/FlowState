@@ -28,3 +28,7 @@ In-memory runtime with ISO clock, timezone, step/run/pause/restart, wait-time ad
 ## Stage 10 — native workflows and backup
 Five sections, creation templates, search/filter/sort, rename/copy/delete protection, themes, onboarding, permission health, diagnostics and bounded transactional workspace/location backup implemented. Map pin selection and richer notification configuration remain open. Android compilation pending.
 
+
+## Audit improvements
+Added bounded JSON preflight, stricter expression checks, serialized coordinator operations, snooze wake correction, separate informational notification identity, consistent catch-up IDs, per-choice dynamic Blockly branches, saved-resource dropdowns, reusable input/return values and transitive definition snapshots. JVM tests now include JSON bounds, recovery identity, reusable snapshots and fourth-choice routing. An offline Natural Earth geographic map with tap placement and radius rendering is implemented; no street tiles or search provider. Latest Android build is still running after repairing copied dependency artifacts inside the workspace cache.
+

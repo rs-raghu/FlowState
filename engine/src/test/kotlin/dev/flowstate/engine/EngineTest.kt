@@ -92,6 +92,30 @@ class EngineTest {
     @Test fun cyclicImportedIrRejected() {
         assertTrue(Compiler.validate(def(Node("a","message",next="a"))).any { it.message.contains("Cycle") })
     }
+    @Test fun safeJsonBoundsAndQuotedBraces() {
+        assertEquals("{\"value\":\"[{\"}",SafeInput.json("{\"value\":\"[{\"}"))
+        assertFails { SafeInput.json("[".repeat(129)+"]".repeat(129)) }
+        assertFails { SafeInput.json("{\"unterminated}") }
+    }
+    @Test fun catchupUsesScheduledOccurrenceIdentity() {
+        val t=Trigger(kind="time",catchUp="grace");val zone=ZoneId.of("UTC");val at=Instant.parse("2026-10-09T09:00:00Z").toEpochMilli()
+        assertEquals(Scheduling.next(t,at-1,zone)!!.key,Scheduling.recovery(t,at+60000,at,zone)!!.key)
+    }
+    @Test fun reusableInputReturnAndDependencySnapshot() {
+        var child=Definition(id="child",entry="return",nodes=listOf(Node("return","return",expressions=mapOf("VALUE" to Expr("get",name="input")))),variables=listOf(Variable("input",Type.STRING,Scope.LOCAL)))
+        val rt=Runtime { child }
+        val parent=Definition(id="parent",entry="call",nodes=listOf(Node("call","call",fields=mapOf("WORKFLOW" to "child","INPUTNAME" to "input","OUTPUTNAME" to "result"),expressions=mapOf("INPUT" to Expr("literal",Value.string("passed"))))),variables=listOf(Variable("result",Type.STRING,Scope.LOCAL)))
+        val started=rt.start("e",parent,0)
+        child=child.copy(version=2,nodes=listOf(Node("return","return",expressions=mapOf("VALUE" to Expr("literal",Value.string("changed"))))))
+        val done=rt.tick(codec.decodeFromString(codec.encodeToString(started)),0,"UTC").execution
+        assertEquals("passed",done.locals["result"]!!.text);assertEquals(State.COMPLETED,done.state)
+    }
+    @Test fun arbitraryChoiceBranchRouting() {
+        val d=def(Node("q","ask",fields=mapOf("OPTIONS" to "A|B|C|D"),branches=mapOf("CHOICE3" to "d")),Node("d","message",fields=mapOf("TITLE" to "fourth choice")))
+        val e=runtime.tick(runtime.start("e",d,0),0,"UTC").execution
+        val tick=runtime.tick(runtime.respond(e,e.interaction!!.token,"D",1),1,"UTC")
+        assertEquals("fourth choice",tick.effects.single().title)
+    }
     @Test fun randomMalformedGraphsFailSafely() {
         repeat(100) { size -> val d=Definition(id="a",entry="0",nodes=(0..size).map { Node(it.toString(),"message",next=((it+1)%(size+1)).toString()) }); assertTrue(Compiler.validate(d).isNotEmpty()) }
     }

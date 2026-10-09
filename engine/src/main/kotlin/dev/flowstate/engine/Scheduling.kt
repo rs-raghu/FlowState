@@ -53,6 +53,10 @@ object Scheduling {
             val date=Instant.ofEpochMilli(start).atZone(zone(t,device)).toLocalDate()
             return if(eligible(t,date)) Occurrence(start,windowKey(t,now,device)) else null
         }
-        return if(now-scheduled<=t.graceSeconds*1000) Occurrence(scheduled,"recovery:$scheduled") else null
+        return if(now-scheduled<=t.graceSeconds*1000) Occurrence(scheduled,occurrenceKey(t,scheduled,device)) else null
+    }
+    fun occurrenceKey(t: Trigger,at: Long,device: ZoneId): String {
+        if(t.recurrence=="weeklyWindow") return windowKey(t,at,device)
+        val z=zone(t,device);val local=Instant.ofEpochMilli(at).atZone(z);return "${z.id}:${local.toLocalDate()}:${local.toLocalTime()}"
     }
 }

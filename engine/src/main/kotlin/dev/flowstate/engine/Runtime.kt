@@ -3,7 +3,12 @@ package dev.flowstate.engine
 import java.util.UUID
 
 class Runtime(private val resolve: (String) -> Definition? = { null }) {
-    fun start(id: String, d: Definition, now: Long): Execution = Execution(id,d,started=now,locals=d.variables.filter { it.scope==Scope.LOCAL }.associate { it.name to it.default })
+    fun start(id: String, d: Definition, now: Long): Execution {
+        val library=mutableMapOf<String,Definition>()
+        fun capture(definition: Definition,path: Set<String>) { require(path.size<8 && definition.id !in path) { "Recursive or excessive workflow dependency" }; definition.nodes.filter { it.op=="call" }.forEach { n -> val child=resolve(n.fields["WORKFLOW"] ?: "") ?: error("Referenced workflow is missing or disabled"); if(child.id !in library) { capture(child,path+definition.id);library[child.id]=child } } }
+        capture(d,emptySet())
+        return Execution(id,d,started=now,locals=d.variables.filter { it.scope==Scope.LOCAL }.associate { it.name to it.default },library=library)
+    }
     fun tick(original: Execution, now: Long, zone: String, persistent: Map<String, Value> = emptyMap(), occupancy: Map<String,Pair<String,Long>> = emptyMap(), singleStep: Boolean = false): Tick {
         var e=original; val values=persistent.toMutableMap(); val effects=mutableListOf<Effect>()
         fun record(node: String, detail: String) { e=e.copy(trace=(e.trace+Trace(now,node,detail)).takeLast(1000)) }
@@ -76,8 +81,16 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                     "break","continue" -> { val index=e.frames.indexOfLast { it.kind in setOf("repeat","while") }; require(index>=0) { "Loop control outside loop" }; val frame=e.frames[index]; e=e.copy(frames=e.frames.take(if(n.op=="break") index else index+1),cursor=if(n.op=="break") frame.returnTo else null) }
                     "set" -> { set(f("NAME"),Scope.valueOf(f("SCOPE","LOCAL")),evaluate(n,"VALUE")); e=e.copy(cursor=n.next) }
                     "delete" -> { set(f("NAME"),Scope.valueOf(f("SCOPE","LOCAL")),Value.NULL); e=e.copy(cursor=n.next) }
-                    "call" -> { require(e.frames.count { it.kind=="call" }<8) { "Call depth exceeded" }; val d=resolve(f("WORKFLOW")) ?: error("Workflow missing or disabled"); require(d.id!=e.definition.id && e.frames.none { it.definition?.id==d.id }) { "Recursive workflow call" }; e=e.copy(frames=e.frames+Frame("call",n.next,definition=e.definition,locals=e.locals),definition=d,cursor=d.entry,locals=d.variables.filter { it.scope==Scope.LOCAL }.associate { it.name to it.default }) }
-                    "return" -> { val index=e.frames.indexOfLast { it.kind=="call" }; if(index<0) e=e.copy(state=State.COMPLETED) else { val frame=e.frames[index]; e=e.copy(definition=requireNotNull(frame.definition),locals=frame.locals,cursor=frame.returnTo,frames=e.frames.take(index)) } }
+                    "call" -> {
+                        require(e.frames.count { it.kind=="call" }<8) { "Call depth exceeded" }; val d=e.library[f("WORKFLOW")] ?: error("Workflow snapshot missing"); require(d.id!=e.definition.id && e.frames.none { it.definition?.id==d.id }) { "Recursive workflow call" }
+                        var locals=d.variables.filter { it.scope==Scope.LOCAL }.associate { it.name to it.default }
+                        if(f("INPUTNAME").isNotEmpty()) { val value=evaluate(n,"INPUT");require(d.variables.any { it.scope==Scope.LOCAL && it.name==f("INPUTNAME") && it.type==value.type }) { "Sub-workflow input type mismatch" };locals=locals+(f("INPUTNAME") to value) }
+                        e=e.copy(frames=e.frames+Frame("call",n.next,definition=e.definition,locals=e.locals,outputName=f("OUTPUTNAME")),definition=d,cursor=d.entry,locals=locals)
+                    }
+                    "return" -> {
+                        val output=n.expressions["VALUE"]?.let { Expressions.evaluate(it,ctx()) } ?: Value.NULL
+                        val index=e.frames.indexOfLast { it.kind=="call" }; if(index<0) e=e.copy(state=State.COMPLETED) else { val frame=e.frames[index];e=e.copy(definition=requireNotNull(frame.definition),locals=frame.locals,cursor=frame.returnTo,frames=e.frames.take(index));if(frame.outputName.isNotEmpty())set(frame.outputName,Scope.LOCAL,output) }
+                    }
                     "try" -> { e=e.copy(cursor=n.branches["DO"],frames=e.frames+Frame("try",n.next,body=n.branches["ERROR"])) }
                     "parallel" -> { // Deterministic sequential interleaving: shared locals, A completes before B.
                         e=e.copy(cursor=n.branches["A"],frames=e.frames+Frame("branch",n.next)+Frame("branch",n.branches["B"]))
@@ -112,7 +125,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 if(i.variable.isNotBlank()) { val declaration=e.definition.variables.find { it.name==i.variable && it.scope==Scope.LOCAL }; require(declaration?.type==value.type); locals=locals+(i.variable to value) }
                 "YES"
             }
-            else -> { require(response in i.options); if(i.variable.isNotBlank()) { require(e.definition.variables.any { it.name==i.variable && it.scope==Scope.LOCAL && it.type==Type.STRING }); locals=locals+(i.variable to Value.string(response)) }; when(i.options.indexOf(response)) { 0 -> "YES"; 1 -> "NO"; else -> "OTHER" } }
+            else -> { require(response in i.options); if(i.variable.isNotBlank()) { require(e.definition.variables.any { it.name==i.variable && it.scope==Scope.LOCAL && it.type==Type.STRING }); locals=locals+(i.variable to Value.string(response)) }; val index=i.options.indexOf(response);if(n.branches["CHOICE$index"]!=null) "CHOICE$index" else when(index) { 0 -> "YES"; 1 -> "NO"; else -> "OTHER" } }
         }
         return e.copy(state=State.RUNNING,interaction=null,wakeAt=null,locals=locals,cursor=n.branches[branch] ?: n.next,frames=if(n.branches[branch]!=null) e.frames+Frame("branch",n.next) else e.frames,trace=(e.trace+Trace(now,n.id,"Response routed to $branch")).takeLast(1000))
     }
