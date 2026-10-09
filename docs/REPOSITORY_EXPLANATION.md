@@ -74,7 +74,7 @@ The main data path is: Blockly workspace → Compiler → Definition → Room au
 | app/proguard-rules.pro | Rules accompanying default optimized Android shrinker configuration. Reviewed alongside successful R8 assembly; real release launch still needs testing. |
 | gradlew / gradlew.bat / gradle/wrapper/* | Cross-platform Gradle bootstrap, version 8.13 URL/JAR/properties and official distribution SHA-256 pin. Unix executable bit set. |
 | scripts/verify.ps1 | Fail-fast npm install/tests/bundle, native tests/debug/lint/instrumentation compilation/release and APK hash. Reports failure via exit status; does not claim device execution. |
-| .github/workflows/android.yml | Push/PR Ubuntu CI build with JDK 23/Node 24/SDK 36 and debug APK artifact upload. No device job or release signing credentials. |
+| .github/workflows/android.yml | Push/PR Ubuntu CI build with JDK 23/Node 24/SDK 36 and debug APK upload; API 29/36 KVM emulator jobs install and execute native tests and retain reports. No release signing credentials. |
 | .gitignore | Excludes local SDK/caches, generated builds, keystores, node_modules and machine-specific settings. |
 
 ## Documentation inventory

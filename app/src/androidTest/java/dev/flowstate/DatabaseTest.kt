@@ -4,9 +4,12 @@ import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.flowstate.data.*
+import dev.flowstate.engine.*
 import dev.flowstate.ui.FlowViewModel
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import org.junit.*
 import org.junit.Assert.*
 
@@ -91,5 +94,69 @@ class DatabaseTest {
         } finally {
             other.close()
         }
+    }
+
+    @Test
+    fun pendingSnapshotSurvivesClosingAndReopeningDatabase() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val filename = "recovery-${UUID.randomUUID()}.db"
+        fun openFile() = Room.databaseBuilder(context, FlowDatabase::class.java, filename).build()
+        val definition = Compiler.compile(FlowViewModel.template("Recovery checklist"), "a", 1)
+        val execution =
+            Runtime().tick(Runtime().start("e", definition, 1000), 1000, "UTC").execution
+        var file = openFile()
+        try {
+            file.withTransaction {
+                file
+                    .dao()
+                    .saveAutomation(
+                        AutomationEntity(
+                            "a",
+                            "Recovery",
+                            workspace = "{}",
+                            definition = codec.encodeToString(definition),
+                            updated = 1000,
+                        )
+                    )
+                file
+                    .dao()
+                    .saveExecution(
+                        ExecutionEntity(
+                            "e",
+                            "a",
+                            "recovery-event",
+                            codec.encodeToString(execution),
+                            execution.state.name,
+                            1000,
+                            execution.wakeAt,
+                        )
+                    )
+            }
+            file.close()
+            file = openFile()
+            val restored = codec.decodeFromString<Execution>(file.dao().execution("e")!!.snapshot)
+            assertEquals(execution, restored)
+            assertEquals(State.WAITING_FOR_USER, restored.state)
+            assertEquals(execution.interaction!!.token, restored.interaction!!.token)
+            val resumed = Runtime().respond(restored, restored.interaction!!.token, "0,1", 2000)
+            assertEquals(State.COMPLETED, Runtime().tick(resumed, 2000, "UTC").execution.state)
+        } finally {
+            file.close()
+            context.deleteDatabase(filename)
+        }
+    }
+
+    @Test
+    fun deletingExecutionCascadesPendingEffects() = runBlocking {
+        val dao = db.dao()
+        dao.saveAutomation(
+            AutomationEntity("a", "A", workspace = "{}", definition = "{}", updated = 0)
+        )
+        dao.saveExecution(ExecutionEntity("e", "a", "event", "{}", "CANCELLED", 0))
+        dao.saveOutbox(OutboxEntity("effect", "e", "{}"))
+        dao.deleteExecutions("a")
+        assertTrue(dao.outbox().isEmpty())
+        dao.deleteAutomation("a")
+        assertNull(dao.automation("a"))
     }
 }
