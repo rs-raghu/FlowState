@@ -49,8 +49,8 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
 
     suspend fun cancel(id: String) = operations.withLock { cancelInternal(id) }
 
-    suspend fun snooze(id: String, minutes: Long) = operations.withLock {
-        snoozeInternal(id, minutes)
+    suspend fun snooze(id: String, minutes: Long, token: String? = null) = operations.withLock {
+        snoozeInternal(id, minutes, token)
     }
 
     suspend fun drain() = operations.withLock { drainInternal() }
@@ -98,17 +98,12 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         db.withTransaction {
             val row = dao.execution(id) ?: return@withTransaction
             val e = codec.decodeFromString<Execution>(row.snapshot)
-            val i = e.interaction ?: return@withTransaction
-            if (
-                i.token != token ||
-                    e.state != State.WAITING_FOR_USER ||
-                    i.deadline?.let { now >= it } == true
-            )
-                return@withTransaction
+            val i = e.pendingInteractions().find { it.token == token } ?: return@withTransaction
+            if (!e.acceptsInteraction(token, now)) return@withTransaction
             require(i.kind == "checklist" && checked.all { it in i.options.indices })
             dao.saveExecution(
                 entity(
-                    e.copy(interaction = i.copy(completed = checked.sorted())),
+                    e.updateInteraction(token) { it.copy(completed = checked.sorted()) },
                     row.automationId,
                     row.eventKey,
                 )
@@ -253,7 +248,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                 "This automation already has four active executions"
             }
             val e = rt.start(UUID.randomUUID().toString(), d, now)
-            dao.saveExecution(entity(e, id, "$id:$event"))
+            dao.insertExecution(entity(e, id, "$id:$event"))
             dao.saveAutomation(a.copy(lastStarted = now))
             execution = e.id
         }
@@ -280,13 +275,11 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             db.withTransaction {
                 val row = dao.execution(id) ?: return@withTransaction
                 var e = codec.decodeFromString<Execution>(row.snapshot)
-                val interaction = e.interaction
-                if (interaction != null && interaction.snoozedUntil?.let { it <= now } == true)
-                    e =
-                        e.copy(
-                            interaction = interaction.copy(snoozedUntil = null),
-                            wakeAt = interaction.deadline,
-                        )
+                e.pendingInteractions()
+                    .filter { it.snoozedUntil?.let { at -> at <= now } == true }
+                    .forEach { i ->
+                        e = e.updateInteraction(i.token) { it.copy(snoozedUntil = null) }
+                    }
                 val persistent =
                     dao.variables()
                         .associate {
@@ -351,7 +344,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             }
         }
         if (accepted) {
-            platform.cancelNotification(id)
+            platform.cancelNotification(id, token)
             driveInternal(id)
         } else driveInternal(id) // Drives expiration without resurrecting stale responses.
     }
@@ -373,33 +366,41 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         platform.cancelAllExecutionNotifications(id)
     }
 
-    private suspend fun snoozeInternal(id: String, minutes: Long) {
+    private suspend fun snoozeInternal(id: String, minutes: Long, token: String?) {
         require(minutes in 1..60)
+        var selectedToken: String? = null
         db.withTransaction {
             val row = dao.execution(id) ?: return@withTransaction
             val e = codec.decodeFromString<Execution>(row.snapshot)
-            val i = e.interaction ?: return@withTransaction
+            val i =
+                e.pendingInteractions().firstOrNull { token == null || it.token == token }
+                    ?: return@withTransaction
+            require(e.acceptsInteraction(i.token, now)) { "Interaction has expired or is paused" }
             require(i.snoozes < 3)
             require(i.deadline?.let { now < it } ?: true)
             require(e.deadline?.let { now < it } ?: true)
             val at = now + minutes * 60000
             val changed =
-                e.copy(
-                    interaction = i.copy(snoozes = i.snoozes + 1, snoozedUntil = at),
-                    wakeAt = minOf(at, i.deadline ?: Long.MAX_VALUE, e.deadline ?: Long.MAX_VALUE),
-                )
+                e.updateInteraction(i.token) { it.copy(snoozes = i.snoozes + 1, snoozedUntil = at) }
+            selectedToken = i.token
             dao.saveExecution(entity(changed, row.automationId, row.eventKey))
             dao.saveOutbox(
                 OutboxEntity(
-                    "${id}:snooze:${i.snoozes}",
+                    "${id}:snooze:${i.token}:${i.snoozes}",
                     id,
                     codec.encodeToString(
-                        Effect("snooze", "interaction", i.title, interaction = changed.interaction)
+                        Effect(
+                            "snooze",
+                            "interaction",
+                            i.title,
+                            interaction =
+                                changed.pendingInteractions().find { it.token == i.token },
+                        )
                     ),
                 )
             )
         }
-        platform.cancelNotification(id)
+        selectedToken?.let { platform.cancelNotification(id, it) } ?: return
         val e = dao.execution(id) ?: return
         platform.schedule("execution", id, e.wakeAt ?: return)
     }
@@ -412,14 +413,14 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                     codec.decodeFromString<Execution>(it.snapshot)
                 }
             val pending = effect.interaction
-            if (
-                pending != null &&
-                    (e?.interaction?.token != pending.token || e.state != State.WAITING_FOR_USER)
-            ) {
+            val current = pending?.let { i ->
+                e?.pendingInteractions()?.find { it.token == i.token }
+            }
+            if (pending != null && current == null) {
                 dao.deleteOutbox(row.id)
                 return@forEach
             }
-            if (e?.interaction?.snoozedUntil?.let { it > now } == true) return@forEach
+            if (current?.snoozedUntil?.let { it > now } == true) return@forEach
             if (!platform.notification(row.executionId, effect))
                 dao.diagnostic(
                     DiagnosticEntity(

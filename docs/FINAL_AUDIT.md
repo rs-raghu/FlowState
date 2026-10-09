@@ -64,7 +64,15 @@ Files/classes: app Android sources, DatabaseTest, TESTING.md AT table. Reproduct
 
 ### AUD-014 — HIGH — Parallel/JOIN semantics incomplete
 
-File/function: Runtime.tick `parallel`, catalogue.js BRANCHES. Reproduction: A waits one hour, B sends a message. Expected under requested interleaving: B can advance independently, then defined join. Actual: B waits for A completion. Required fix: durable branch scheduling/joins, isolated/shared value contract, independently addressable interaction tokens and parent cancellation tests. Current fix status: accurately labeled sequential behavior only. Verification: **OPEN requirement**, not a parallel implementation.
+File/function: Runtime.tickBranches, catalogue.js PARALLEL. Previous reproduction: A waited one hour and blocked B's message. Fix: persisted branch executions and round-robin position, earliest wake, independent tokens/notification tags, isolated local merge with conflict rejection, ordered persistent values, JOIN/failure/TRY propagation, shared budgets and parent cancellation guards. Verification: twelve dedicated parallel regressions; native concurrent question/notification case compiled and awaiting CI. **Core correction verified; physical stress/lifecycle acceptance remains open.**
+
+### AUD-022 — HIGH — End-of-stack cursor restarted after persisted response/wait
+
+Initial emulator checklist completion timed out on both API 29/36: nullable cursor was omitted by serialization and decoded as definition.entry, restarting the final question. Fix: encode explicit nulls, default a missing legacy cursor to null, and explicitly initialize Runtime.start at the entry. Verification: endOfGraphWaitAndResponsePreserveNullCursorAcrossSerialization and serialized parallel JOIN tests pass; native checklist regression awaits rerun.
+
+### AUD-023 — MEDIUM — Upsert silently ignored a duplicate secondary event key
+
+Initial emulator eventIdentityIsUnique showed Room upsert swallowing the insert conflict and updating a nonexistent primary key. Fix: new execution creation uses an aborting @Insert, while existing snapshots retain @Upsert. Verification: instrumentation regression now uses the same insertion path as Coordinator; rerun pending. Database uniqueness was present but silent conflict semantics were unsuitable for new-run creation.
 
 ### AUD-015 — MEDIUM — Unbounded persisted history
 

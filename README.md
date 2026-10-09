@@ -2,7 +2,7 @@
 
 Offline-first visual personal automation for Android 10+. The app uses native Kotlin/Compose screens, a locally bundled Blockly editor, and a validated native workflow interpreter. No login, remote backend, analytics or Internet permission.
 
-**Development build:** debug and unsigned release APKs build successfully. 36 JVM tests and four Blockly tests pass. Android installation, instrumentation, notification/geofence behavior and lifecycle acceptance are not yet verified. The full engineering brief is not completely implemented; read [status](docs/IMPLEMENTATION_STATUS.md), [limitations](docs/KNOWN_LIMITATIONS.md) and [acceptance tests](docs/TESTING.md).
+**Development build:** debug and unsigned release APKs build successfully. 49 JVM tests and four Blockly tests pass, including durable parallel branches/JOIN. Android API 29/36 CI emulators install, launch and test the app; initial failures were repaired and the expanded suite awaits rerun. Physical geofence/lifecycle acceptance and parts of the engineering brief remain open; read [status](docs/IMPLEMENTATION_STATUS.md), [limitations](docs/KNOWN_LIMITATIONS.md) and [acceptance tests](docs/TESTING.md).
 
 ## What works in code
 

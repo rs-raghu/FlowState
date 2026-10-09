@@ -51,10 +51,10 @@ class DatabaseTest {
         dao.saveAutomation(
             AutomationEntity("a", "A", workspace = "{}", definition = "{}", updated = 0)
         )
-        dao.saveExecution(ExecutionEntity("e1", "a", "same-event", "{}", "COMPLETED", 0))
+        dao.insertExecution(ExecutionEntity("e1", "a", "same-event", "{}", "COMPLETED", 0))
         var rejected = false
         try {
-            dao.saveExecution(ExecutionEntity("e2", "a", "same-event", "{}", "COMPLETED", 0))
+            dao.insertExecution(ExecutionEntity("e2", "a", "same-event", "{}", "COMPLETED", 0))
         } catch (_: android.database.sqlite.SQLiteConstraintException) {
             rejected = true
         }

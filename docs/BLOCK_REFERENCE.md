@@ -18,7 +18,7 @@ All custom block identifiers have `fs_` prefixes. Every block has a stable Block
 | break/continue | Exit/advance nearest loop frame | Native validation rejects use outside a loop |
 | call/return | Saved workflow, named input/value, named local output; return expression | Missing/disabled target, type mismatch or recursion rejected/fails visibly |
 | try | Body and error handler | Unhandled failures set FAILED with diagnostic trace |
-| parallel | A then B, deterministic sequential branches | Shared variables; parent cancellation applies to the whole run |
+| parallel | Independent A/B progress with deterministic round robin and JOIN | Isolated locals merge; conflicting writes fail; ordered shared persistent writes; independent questions; parent cancellation |
 | stop/log/assert/breakpoint | End, private trace, Boolean assertion or simulator pause | Breakpoints pause simulation after the marker; production records and continues |
 
 Expression operations: Boolean AND/OR/XOR/NOT; equality and ordered comparisons; range/empty/contains/prefix/suffix; arithmetic; concatenation/trim/case/length; list append/remove/item/join; explicit string/number conversion; current instant/date/time/weekday/month/weekend; overnight time windows, before/after; elapsed duration, timestamp addition/subtraction, formatting; fresh occupancy.

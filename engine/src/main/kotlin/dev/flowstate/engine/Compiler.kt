@@ -569,7 +569,8 @@ object Compiler {
             node.branches.forEach { (name, target) ->
                 checkLoop(
                     target,
-                    loops + if (node.op in setOf("repeat", "while") && name == "DO") 1 else 0,
+                    if (node.op == "parallel") 0
+                    else loops + if (node.op in setOf("repeat", "while") && name == "DO") 1 else 0,
                     depth + 1,
                 )
             }

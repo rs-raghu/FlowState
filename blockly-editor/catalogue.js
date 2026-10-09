@@ -32,7 +32,7 @@ export const definitions=[
  block('break','BREAK loop',[],120),block('continue','CONTINUE loop',[],120),block('stop','STOP workflow',[],120),block('return','RETURN value (optional)',[expr('VALUE')],120),
  block('call','CALL workflow / input variable name / input value / output local variable name',[resource('WORKFLOW','workflow'),text('INPUTNAME'),expr('INPUT'),text('OUTPUTNAME')],120),
  block('try','TRY / handle error',[body('DO'),body('ERROR')],120),
- block('parallel','BRANCHES (A completes then B; shared variables) / A / B',[body('A'),body('B')],120),
+ block('parallel','PARALLEL branches / A / B / join both (local conflicts fail)',[body('A'),body('B')],120),
  block('variable','DECLARE name / type / scope / default (blank = null)',[text('NAME','answer'),dropdown('TYPE',types),scope(),text('DEFAULT')],330),
  block('set','SET variable / scope / value',[text('NAME','answer'),scope(),expr('VALUE')],330),
  block('delete','RESET variable value / scope',[text('NAME','answer'),scope()],330),

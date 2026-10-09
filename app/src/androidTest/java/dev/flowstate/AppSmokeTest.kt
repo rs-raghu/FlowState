@@ -1,5 +1,6 @@
 package dev.flowstate
 
+import android.app.NotificationManager
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -7,6 +8,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.flowstate.data.Preferences
 import dev.flowstate.engine.Execution
 import dev.flowstate.engine.codec
+import dev.flowstate.engine.pendingInteractions
+import dev.flowstate.platform.Platform
 import dev.flowstate.ui.FlowViewModel
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
@@ -101,5 +104,41 @@ class AppSmokeTest {
             assertEquals(completed, app.database.dao().execution(executionId)!!.snapshot)
             assertNull(codec.decodeFromString<Execution>(completed).interaction)
         }
+    }
+
+    @Test
+    fun concurrentBranchQuestionsHaveSeparateNotificationsAndResponses() {
+        val id = UUID.randomUUID().toString()
+        automationId = id
+        val source =
+            """{"blocks":{"languageVersion":0,"blocks":[{"type":"fs_trigger","id":"trigger","fields":{"KIND":"manual"},"next":{"block":{"type":"fs_parallel","id":"fork","inputs":{"A":{"block":{"type":"fs_ask","id":"a","fields":{"KIND":"yesno","TITLE":"Branch A question","TIMEOUT":0}}},"B":{"block":{"type":"fs_ask","id":"b","fields":{"KIND":"yesno","TITLE":"Branch B question","TIMEOUT":0}}}}}}}]}}"""
+        val executionId = runBlocking {
+            app.coordinator.save(id, "Concurrent questions", source)
+            app.coordinator.start(id)!!
+        }
+        fun pending() = runBlocking {
+            codec
+                .decodeFromString<Execution>(app.database.dao().execution(executionId)!!.snapshot)
+                .pendingInteractions()
+        }
+        assertEquals(2, pending().size)
+        if (Platform(app).notificationsAllowed()) {
+            val tags =
+                app.getSystemService(NotificationManager::class.java)
+                    .activeNotifications
+                    .mapNotNull { it.tag }
+            assertEquals(2, tags.count { it.startsWith("$executionId:question:") })
+        }
+        open()
+        navigate("Activity")
+        compose.onAllNodesWithText("Yes")[1].performScrollTo().performClick()
+        compose.waitUntil(10_000) { pending().size == 1 }
+        compose.onNodeWithText("Branch A question").assertExists()
+        compose.onNodeWithText("Branch B question").assertDoesNotExist()
+        compose.onNodeWithText("Yes").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            runBlocking { app.database.dao().execution(executionId)!!.state == "COMPLETED" }
+        }
+        assertTrue(pending().isEmpty())
     }
 }

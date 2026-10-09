@@ -142,7 +142,7 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
                                     "Next scheduled: ${automations.mapNotNull { it.nextAt }.minOrNull()?.let(::date) ?: "None"}"
                                 )
                                 Text(
-                                    "${executions.count { it.state=="WAITING_FOR_USER" }} pending interactions"
+                                    "${executions.sumOf { codec.decodeFromString<Execution>(it.snapshot).pendingInteractions().size }} pending interactions"
                                 )
                             }
                             Button(
@@ -579,7 +579,7 @@ private fun Activity(
                 Text("${row.state} · definition v${e.definition.version}")
                 Text(date(row.updated))
                 e.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                e.interaction?.let { InteractionPanel(vm, row.id, it) }
+                e.pendingInteractions().forEach { InteractionPanel(vm, row.id, it) }
                 e.wakeAt?.let { Text("Scheduled wake: ${date(it)}") }
                 Row {
                     TextButton(onClick = { onExpand(if (expanded == row.id) null else row.id) }) {
@@ -662,8 +662,12 @@ private fun InteractionPanel(vm: FlowViewModel, id: String, i: Interaction) {
     }
     Row {
         TextButton(onClick = { vm.respond(id, i.token, "__cancel") }) { Text("Cancel") }
-        TextButton(enabled = i.snoozes < 3, onClick = { vm.snooze(id, 5) }) { Text("Snooze 5 min") }
-        TextButton(enabled = i.snoozes < 3, onClick = { vm.snooze(id, 15) }) { Text("15 min") }
+        TextButton(enabled = i.snoozes < 3, onClick = { vm.snooze(id, 5, i.token) }) {
+            Text("Snooze 5 min")
+        }
+        TextButton(enabled = i.snoozes < 3, onClick = { vm.snooze(id, 15, i.token) }) {
+            Text("15 min")
+        }
     }
 }
 

@@ -32,7 +32,7 @@ fun Simulator(d: Definition, definitions: List<Definition>, onHighlight: (String
         try {
             val now = Instant.parse(clock).toEpochMilli()
             if (e.state == State.PAUSED) {
-                e = e.copy(state = pausedState ?: State.RUNNING)
+                e = e.copy(state = pausedState ?: State.RUNNING).resumePausedBranches()
                 pausedState = null
             }
             val tick =
@@ -115,7 +115,7 @@ fun Simulator(d: Definition, definitions: List<Definition>, onHighlight: (String
             TextButton(
                 onClick = {
                     if (e.state == State.PAUSED) {
-                        e = e.copy(state = pausedState ?: State.RUNNING)
+                        e = e.copy(state = pausedState ?: State.RUNNING).resumePausedBranches()
                         pausedState = null
                     }
                 }
@@ -221,7 +221,7 @@ fun Simulator(d: Definition, definitions: List<Definition>, onHighlight: (String
                 Text("Advance to wake time")
             }
         }
-        e.interaction?.let { i ->
+        e.pendingInteractions().forEach { i ->
             Text(i.title)
             Text("${i.kind}: ${i.options.joinToString(" | ")}")
             OutlinedTextField(

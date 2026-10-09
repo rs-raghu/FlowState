@@ -25,6 +25,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         return Execution(
             id,
             d,
+            cursor = d.entry,
             started = now,
             locals =
                 d.variables.filter { it.scope == Scope.LOCAL }.associate { it.name to it.default },
@@ -40,6 +41,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         occupancy: Map<String, Pair<String, Long>> = emptyMap(),
         singleStep: Boolean = false,
         simulationBreakpoints: Boolean = false,
+        parallelDepth: Int = 0,
     ): Tick {
         var e = original
         val values = persistent.toMutableMap()
@@ -85,7 +87,19 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 values,
             )
         }
+        if (e.branches.isNotEmpty())
+            return tickBranches(
+                e,
+                now,
+                zone,
+                values,
+                occupancy,
+                singleStep,
+                simulationBreakpoints,
+                parallelDepth,
+            )
         try {
+            require(parallelDepth <= 16) { "Parallel nesting limit exceeded" }
             if (e.state == State.WAITING_FOR_USER) {
                 val interaction = requireNotNull(e.interaction)
                 if (interaction.deadline == null || now < interaction.deadline)
@@ -94,12 +108,13 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 if (node.branches["TIMEOUT"] == null) {
                     e = e.copy(state = State.EXPIRED, interaction = null, wakeAt = null)
                     record(node.id, "Response deadline expired")
-                    effects += Effect("${e.id}:expire", "cancel", e.id)
+                    effects +=
+                        Effect("${e.id}:expire", "cancel", e.id, cancelToken = interaction.token)
                     return Tick(e, effects, values)
                 }
                 e = e.copy(state = State.RUNNING, interaction = null, wakeAt = null)
                 branch(node, "TIMEOUT")
-                effects += Effect("${e.id}:expire", "cancel", e.id)
+                effects += Effect("${e.id}:expire", "cancel", e.id, cancelToken = interaction.token)
             }
             if (e.state in setOf(State.WAITING_FOR_TIME, State.WAITING_FOR_CONDITION)) {
                 if (now < (e.wakeAt ?: Long.MAX_VALUE)) return Tick(e, effects, values)
@@ -107,7 +122,11 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
             }
             e = e.copy(state = State.RUNNING)
             var slice = 0
-            while (e.state == State.RUNNING && slice < if (singleStep) 1 else 100) {
+            while (
+                e.state == State.RUNNING &&
+                    e.branches.isEmpty() &&
+                    slice < if (singleStep) 1 else 100
+            ) {
                 if (e.cursor == null) {
                     val frame = e.frames.lastOrNull()
                     if (frame == null) {
@@ -407,15 +426,23 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                     e.frames + Frame("try", n.next, body = n.branches["ERROR"]),
                             )
                     }
-                    "parallel" -> { // Deterministic sequential interleaving: shared locals, A
-                        // completes before B.
+                    "parallel" -> {
                         e =
                             e.copy(
-                                cursor = n.branches["A"],
-                                frames =
-                                    e.frames +
-                                        Frame("branch", n.next) +
-                                        Frame("branch", n.branches["B"]),
+                                cursor = n.next,
+                                branchTurn = 0,
+                                branches =
+                                    listOf("A", "B").map { name ->
+                                        Execution(
+                                            id = "${e.id}:fork:${e.steps}:$name",
+                                            definition = e.definition,
+                                            cursor = n.branches[name],
+                                            locals = e.locals,
+                                            started = now,
+                                            library = e.library,
+                                            deadline = e.deadline,
+                                        )
+                                    },
                             )
                     }
                     "assert" -> {
@@ -437,7 +464,12 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                     else -> error("Unsupported node ${n.op}")
                 }
             }
-            if (e.state == State.RUNNING && e.cursor == null && e.frames.isEmpty())
+            if (
+                e.state == State.RUNNING &&
+                    e.branches.isEmpty() &&
+                    e.cursor == null &&
+                    e.frames.isEmpty()
+            )
                 e = e.copy(state = State.COMPLETED)
         } catch (failure: Exception) {
             val index = e.frames.indexOfLast { it.kind == "try" }
@@ -470,7 +502,166 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         return Tick(e, effects, values)
     }
 
+    private fun tickBranches(
+        original: Execution,
+        now: Long,
+        zone: String,
+        persistent: Map<String, Value>,
+        occupancy: Map<String, Pair<String, Long>>,
+        singleStep: Boolean,
+        simulationBreakpoints: Boolean,
+        depth: Int,
+    ): Tick {
+        var e = original
+        var values = persistent
+        val effects = mutableListOf<Effect>()
+        fun count(run: Execution): Int = 1 + run.branches.sumOf(::count)
+        fun runnable(run: Execution): Boolean {
+            if (run.state in terminal || run.state == State.PAUSED) return false
+            if (run.deadline?.let { now >= it } == true) return true
+            if (run.branches.isNotEmpty())
+                return run.branches.any(::runnable) || run.branches.all { it.state in terminal }
+            return run.state in setOf(State.CREATED, State.QUEUED, State.RUNNING) ||
+                run.nextWake()?.let { now >= it } == true
+        }
+        try {
+            require(depth <= 16 && count(e) <= 64) { "Parallel nesting or branch limit exceeded" }
+            var slice = 0
+            while (slice < if (singleStep) 1 else 100) {
+                val index =
+                    e.branches.indices
+                        .map { (e.branchTurn + it) % e.branches.size }
+                        .firstOrNull { runnable(e.branches[it]) } ?: break
+                val before = e.branches[index]
+                val result =
+                    tick(
+                        before,
+                        now,
+                        zone,
+                        values,
+                        occupancy,
+                        singleStep = true,
+                        simulationBreakpoints = simulationBreakpoints,
+                        parallelDepth = depth + 1,
+                    )
+                val child = result.execution
+                require(e.steps + child.steps - before.steps <= e.definition.maxSteps) {
+                    "Runtime step budget exhausted"
+                }
+                values = result.persistent
+                effects += result.effects
+                val children = e.branches.toMutableList().apply { this[index] = child }
+                val added = child.trace.lastOrNull()?.takeIf { it != before.trace.lastOrNull() }
+                e =
+                    e.copy(
+                        branches = children,
+                        branchTurn = (index + 1) % children.size,
+                        steps = e.steps + child.steps - before.steps,
+                        trace =
+                            if (added == null) e.trace
+                            else
+                                (e.trace +
+                                        added.copy(detail = "Branch ${index + 1}: ${added.detail}"))
+                                    .takeLast(1000),
+                    )
+                require(count(e) <= 64) { "Parallel branch limit exceeded" }
+                if (child.state in setOf(State.FAILED, State.EXPIRED, State.CANCELLED))
+                    error(
+                        "Branch ${index + 1} ${child.state}: ${child.error ?: "did not complete"}"
+                    )
+                slice++
+                if (child.state == State.PAUSED)
+                    return Tick(
+                        e.copy(state = State.PAUSED, wakeAt = e.nextWake()),
+                        effects,
+                        values,
+                    )
+            }
+            if (e.branches.all { it.state == State.COMPLETED }) {
+                val writes = mutableMapOf<String, Value>()
+                e.branches
+                    .filter { it.definition.id == e.definition.id }
+                    .forEach { child ->
+                        child.locals
+                            .filter { (key, value) ->
+                                !key.startsWith("_") && value != e.locals[key]
+                            }
+                            .forEach { (key, value) ->
+                                require(key !in writes || writes[key] == value) {
+                                    "Parallel local-variable conflict: $key"
+                                }
+                                writes[key] = value
+                            }
+                    }
+                return Tick(
+                    e.copy(
+                        branches = emptyList(),
+                        branchTurn = 0,
+                        locals = e.locals + writes,
+                        state = State.RUNNING,
+                        wakeAt = null,
+                        trace =
+                            (e.trace + Trace(now, e.cursor ?: "", "Parallel JOIN completed"))
+                                .takeLast(1000),
+                    ),
+                    effects,
+                    values,
+                )
+            }
+            val active = e.branches.any(::runnable)
+            return Tick(
+                e.copy(
+                    state = if (active) State.RUNNING else State.WAITING_FOR_BRANCHES,
+                    wakeAt = e.nextWake(),
+                ),
+                effects,
+                values,
+            )
+        } catch (failure: Exception) {
+            e.pendingInteractions().forEach { i ->
+                effects +=
+                    Effect("${e.id}:join-cancel:${i.token}", "cancel", e.id, cancelToken = i.token)
+            }
+            val frameIndex = e.frames.indexOfLast { it.kind == "try" }
+            val trace =
+                (e.trace + Trace(now, e.cursor ?: "", failure.message ?: "Parallel failure"))
+                    .takeLast(1000)
+            e =
+                if (frameIndex >= 0) {
+                    val frame = e.frames[frameIndex]
+                    val call = e.frames.drop(frameIndex + 1).firstOrNull { it.kind == "call" }
+                    e.copy(
+                        definition = call?.definition ?: e.definition,
+                        locals = call?.locals ?: e.locals,
+                        branches = emptyList(),
+                        cursor = frame.body ?: frame.returnTo,
+                        frames = e.frames.take(frameIndex) + Frame("branch", frame.returnTo),
+                        state = State.RUNNING,
+                        wakeAt = null,
+                        trace = trace,
+                        error = failure.message,
+                    )
+                } else
+                    e.copy(
+                        branches = emptyList(),
+                        state = State.FAILED,
+                        interaction = null,
+                        wakeAt = null,
+                        trace = trace,
+                        error = failure.message,
+                    )
+            return Tick(e, effects, values)
+        }
+    }
+
     fun respond(e: Execution, token: String, response: String, now: Long): Execution {
+        if (e.state in terminal || e.state == State.PAUSED || e.deadline?.let { now >= it } == true)
+            return e
+        if (e.branches.isNotEmpty()) {
+            val children = e.branches.map { respond(it, token, response, now) }
+            return if (children == e.branches) e
+            else e.copy(branches = children, state = State.RUNNING, wakeAt = null)
+        }
         val i = e.interaction ?: return e
         if (
             e.state != State.WAITING_FOR_USER ||

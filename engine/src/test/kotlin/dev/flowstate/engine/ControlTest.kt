@@ -8,6 +8,37 @@ import org.junit.Test
 
 class ControlTest {
     @Test
+    fun endOfGraphWaitAndResponsePreserveNullCursorAcrossSerialization() {
+        val runtime = Runtime()
+        val d =
+            Definition(
+                id = "last-wait",
+                entry = "wait",
+                nodes = listOf(Node("wait", "wait", fields = mapOf("SECONDS" to "1"))),
+            )
+        val waiting = runtime.tick(runtime.start("run", d, 0), 0, "UTC").execution
+        val restored = codec.decodeFromString<Execution>(codec.encodeToString(waiting))
+        assertNull(restored.cursor)
+        val legacy =
+            codec.decodeFromString<Execution>(
+                codec.encodeToString(waiting).replace("\"cursor\":null,", "")
+            )
+        assertNull(legacy.cursor)
+        assertEquals(State.COMPLETED, runtime.tick(restored, 1000, "UTC").execution.state)
+        val q =
+            d.copy(
+                entry = "q",
+                nodes =
+                    listOf(Node("q", "ask", fields = mapOf("KIND" to "yesno", "TIMEOUT" to "0"))),
+            )
+        val pending = runtime.tick(runtime.start("question", q, 0), 0, "UTC").execution
+        val response = runtime.respond(pending, pending.interaction!!.token, "Yes", 1)
+        val saved = codec.decodeFromString<Execution>(codec.encodeToString(response))
+        assertNull(saved.cursor)
+        assertEquals(State.COMPLETED, runtime.tick(saved, 1, "UTC").execution.state)
+    }
+
+    @Test
     fun suspendedCallerDeclarationsRemainProtectedInsideChildWorkflow() {
         val caller =
             Definition(

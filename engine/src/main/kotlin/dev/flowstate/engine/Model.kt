@@ -6,7 +6,7 @@ import kotlinx.serialization.json.Json
 val codec = Json {
     encodeDefaults = true
     ignoreUnknownKeys = false
-    explicitNulls = false
+    explicitNulls = true
 }
 
 @Serializable
@@ -122,7 +122,7 @@ data class Definition(
     val schema: Int = 1,
     val id: String,
     val version: Int = 1,
-    val entry: String?,
+    val entry: String? = null,
     val nodes: List<Node>,
     val variables: List<Variable> = emptyList(),
     val trigger: Trigger = Trigger(),
@@ -138,6 +138,7 @@ enum class State {
     WAITING_FOR_USER,
     WAITING_FOR_TIME,
     WAITING_FOR_CONDITION,
+    WAITING_FOR_BRANCHES,
     PAUSED,
     COMPLETED,
     CANCELLED,
@@ -179,7 +180,7 @@ data class Interaction(
 data class Execution(
     val id: String,
     val definition: Definition,
-    val cursor: String? = definition.entry,
+    val cursor: String? = null,
     val state: State = State.CREATED,
     val frames: List<Frame> = emptyList(),
     val locals: Map<String, Value> = emptyMap(),
@@ -191,10 +192,53 @@ data class Execution(
     val error: String? = null,
     val library: Map<String, Definition> = emptyMap(),
     val deadline: Long? = null,
+    val branches: List<Execution> = emptyList(),
+    val branchTurn: Int = 0,
 )
 
 fun Execution.capturedDefinitions(): List<Definition> =
-    listOf(definition) + library.values + frames.mapNotNull { it.definition }
+    listOf(definition) +
+        library.values +
+        frames.mapNotNull { it.definition } +
+        branches.flatMap { it.capturedDefinitions() }
+
+fun Execution.pendingInteractions(): List<Interaction> =
+    if (state in Runtime.terminal) emptyList()
+    else listOfNotNull(interaction) + branches.flatMap { it.pendingInteractions() }
+
+fun Execution.acceptsInteraction(token: String, now: Long): Boolean =
+    state !in Runtime.terminal &&
+        state != State.PAUSED &&
+        deadline?.let { now < it } != false &&
+        (interaction?.let { it.token == token && it.deadline?.let { at -> now < at } != false } ==
+            true || branches.any { it.acceptsInteraction(token, now) })
+
+fun Execution.updateInteraction(token: String, change: (Interaction) -> Interaction): Execution {
+    if (state in Runtime.terminal) return this
+    val changed = interaction?.takeIf { it.token == token }?.let(change)
+    val children = branches.map { it.updateInteraction(token, change) }
+    val next = copy(interaction = changed ?: interaction, branches = children)
+    return next.copy(wakeAt = next.nextWake())
+}
+
+fun Execution.nextWake(): Long? =
+    if (state in Runtime.terminal) null
+    else
+        (if (branches.isNotEmpty()) branches.mapNotNull { it.nextWake() }
+            else if (interaction != null)
+                listOfNotNull(interaction.snoozedUntil, interaction.deadline)
+            else listOfNotNull(wakeAt))
+            .plus(listOfNotNull(deadline))
+            .minOrNull()
+
+fun Execution.resumePausedBranches(): Execution =
+    copy(
+        state =
+            if (state == State.PAUSED) {
+                if (branches.isEmpty()) State.RUNNING else State.WAITING_FOR_BRANCHES
+            } else state,
+        branches = branches.map { it.resumePausedBranches() },
+    )
 
 @Serializable
 data class Effect(
@@ -203,6 +247,7 @@ data class Effect(
     val title: String,
     val body: String = "",
     val interaction: Interaction? = null,
+    val cancelToken: String = "",
 )
 
 data class Tick(

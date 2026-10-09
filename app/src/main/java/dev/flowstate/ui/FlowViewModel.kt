@@ -69,7 +69,9 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
         application.coordinator.respond(id, token, value)
     }
 
-    fun snooze(id: String, minutes: Long) = work { application.coordinator.snooze(id, minutes) }
+    fun snooze(id: String, minutes: Long, token: String) = work {
+        application.coordinator.snooze(id, minutes, token)
+    }
 
     fun create(name: String, template: String, onCreated: (String) -> Unit) = work {
         val id = UUID.randomUUID().toString()

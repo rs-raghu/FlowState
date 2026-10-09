@@ -128,6 +128,8 @@ interface FlowDao {
 
     @Upsert suspend fun saveExecution(value: ExecutionEntity)
 
+    @Insert suspend fun insertExecution(value: ExecutionEntity)
+
     @Query("DELETE FROM executions WHERE automationId=:id") suspend fun deleteExecutions(id: String)
 
     @Query("SELECT * FROM variables") suspend fun variables(): List<VariableEntity>

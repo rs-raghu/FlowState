@@ -189,8 +189,15 @@ class Platform(private val context: Context) {
         }
     }
 
-    fun cancelNotification(execution: String) {
-        NotificationManagerCompat.from(context).cancel(execution, 1)
+    fun cancelNotification(execution: String, token: String? = null) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (token != null) manager.cancel("$execution:question:$token", 1)
+        else {
+            manager.cancel(execution, 1)
+            manager.activeNotifications
+                .filter { it.tag?.startsWith("$execution:question:") == true }
+                .forEach { manager.cancel(it.tag, it.id) }
+        }
     }
 
     fun cancelAllExecutionNotifications(execution: String) {
@@ -200,7 +207,7 @@ class Platform(private val context: Context) {
 
     fun notification(execution: String, effect: Effect): Boolean {
         if (effect.kind == "cancel") {
-            cancelNotification(execution)
+            cancelNotification(execution, effect.cancelToken.ifBlank { null })
             return true
         }
         if (!notificationsAllowed()) return false
@@ -260,7 +267,8 @@ class Platform(private val context: Context) {
         return try {
             NotificationManagerCompat.from(context)
                 .notify(
-                    if (effect.interaction == null) "$execution:message" else execution,
+                    effect.interaction?.let { "$execution:question:${it.token}" }
+                        ?: "$execution:message",
                     1,
                     n.build(),
                 )
