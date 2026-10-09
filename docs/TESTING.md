@@ -31,6 +31,8 @@ Build outputs and integrity checks are recorded in BUILD_ARTIFACTS.md. Lint uses
 
 ## AT-001–AT-030 mapping
 
+Run 37970443385 passed the standard ten-test suite and recovery preparation on both API levels, then stopped because the runner lacks ripgrep. The shell helper now falls back to grep; the force-stop verification phase still awaits the next run. Failed harness runs are retained as evidence rather than reported as application acceptance.
+
 “Core passed” below means the named JVM behavior passed, with platform steps still pending. “Compiled” means a native test has not run. **None of the end-to-end device gates is certified passed.**
 
 | Gate | Automated evidence | Required Android/manual procedure and current status |
