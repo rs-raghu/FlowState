@@ -16,6 +16,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The process recovery test requires two separate invocations and an external force-stop.
+        testInstrumentationRunnerArguments["notClass"] = "dev.flowstate.ProcessRecoveryTest"
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

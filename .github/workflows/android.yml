@@ -72,7 +72,9 @@ jobs:
           ram-size: 2048M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: bash ./gradlew :app:connectedDebugAndroidTest --max-workers=2 --console=plain
+          script: |
+            bash ./gradlew :app:connectedDebugAndroidTest --max-workers=2 --console=plain
+            bash ./scripts/test-process-recovery.sh
       - name: Save device reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -81,4 +83,5 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+            app/build/reports/process-recovery/
           if-no-files-found: warn

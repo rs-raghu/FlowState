@@ -79,6 +79,8 @@ The main data path is: Blockly workspace → Compiler → Definition → Room au
 
 ## Documentation inventory
 
+`ProcessRecoveryTest.kt` and `scripts/test-process-recovery.sh` implement a two-invocation instrumentation fixture around force-stop/reopen; the first writes a suspended/version-isolated run and fixture metadata, the second asserts a new process, recovers/responds/cancels and cleans its own records. The CI device job executes both phases after normal instrumentation; default Gradle instrumentation excludes this special class.
+
 `data/BuiltInExamples.kt` reads the offline `assets/examples.json` collection and creates fresh workflow/location IDs while rewriting resource references inside each Blockly workspace. Dashboard/Settings call the serialized coordinator's validated backup import; examples start disabled. `DatabaseTest.bundledExamplesImportAsIndependentDisabledCopies` checks repeat installation and dependency ownership.
 
 `engine/src/test/kotlin/dev/flowstate/engine/ParallelTest.kt` exercises independent waits/questions, serialized joins, local conflict/merge, persistent write order, failure/TRY/cancellation, deadlines/snooze, breakpoints, nesting/budgets and loop-boundary validation. `app/src/androidTest/java/dev/flowstate/AppSmokeTest.kt` launches/navigates/recreates the real Activity and checks durable checklist and concurrent question responses/notification ownership.
