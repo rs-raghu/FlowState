@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import Blockly from 'blockly/core';
+import * as En from 'blockly/msg/en';
+import {register,definitions,initialWorkspace} from './catalogue.js';
+Blockly.setLocale(En);register(Blockly);
+test('every custom block survives JSON serialization',()=>{
+ for(const definition of definitions){const a=new Blockly.Workspace();const b=a.newBlock(definition.type);const state=Blockly.serialization.workspaces.save(a);const c=new Blockly.Workspace();Blockly.serialization.workspaces.load(state,c);assert.equal(c.getAllBlocks(false)[0].type,b.type);a.dispose();c.dispose();}
+});
+test('templates roundtrip stable instance IDs and connections',()=>{
+ const a=new Blockly.Workspace();Blockly.serialization.workspaces.load(initialWorkspace('checklist'),a);const saved=Blockly.serialization.workspaces.save(a);const b=new Blockly.Workspace();Blockly.serialization.workspaces.load(saved,b);assert.deepEqual(Blockly.serialization.workspaces.save(b),saved);assert.equal(b.getTopBlocks()[0].getNextBlock().type,'fs_checklist');a.dispose();b.dispose();
+});
