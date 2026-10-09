@@ -1,0 +1,84 @@
+package dev.flowstate.platform
+
+import android.Manifest
+import android.app.*
+import android.content.*
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.net.Uri
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.work.*
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.location.*
+import dev.flowstate.MainActivity
+import dev.flowstate.engine.*
+import dev.flowstate.data.*
+import kotlinx.coroutines.tasks.await
+import java.util.concurrent.TimeUnit
+
+class Platform(private val context: Context) {
+    fun granted(permission: String)=ContextCompat.checkSelfPermission(context,permission)==PackageManager.PERMISSION_GRANTED
+    fun notificationsAllowed()=(Build.VERSION.SDK_INT<33 || granted(Manifest.permission.POST_NOTIFICATIONS)) && NotificationManagerCompat.from(context).areNotificationsEnabled()
+    fun precise()=granted(Manifest.permission.ACCESS_FINE_LOCATION)
+    fun background()=granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    fun locationEnabled()=(context.getSystemService(Context.LOCATION_SERVICE) as LocationManager).isLocationEnabled
+    fun playServices()=GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)==0
+    fun exact()=Build.VERSION.SDK_INT<31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+    fun alarmIntent(kind: String,id: String,at: Long=0,key: String=""): PendingIntent {
+        val intent=Intent(context,AlarmReceiver::class.java).setData(Uri.parse("flowstate://alarm/$kind/$id")).putExtra("kind",kind).putExtra("id",id).putExtra("at",at).putExtra("key",key)
+        return PendingIntent.getBroadcast(context,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+    fun cancelAlarm(kind: String,id: String) { context.getSystemService(AlarmManager::class.java).cancel(alarmIntent(kind,id)); WorkManager.getInstance(context).cancelUniqueWork("timer:$kind:$id") }
+    fun schedule(kind: String,id: String,at: Long,key: String="") {
+        val manager=context.getSystemService(AlarmManager::class.java); val pi=alarmIntent(kind,id,at,key)
+        try { if(exact()) manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi) else manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi) }
+        catch(_: SecurityException) { manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi) }
+        // Independent durable fallback; duplicated delivery is filtered in the coordinator.
+        val data=workDataOf("kind" to kind,"id" to id,"at" to at,"key" to key)
+        WorkManager.getInstance(context).enqueueUniqueWork("timer:$kind:$id",ExistingWorkPolicy.REPLACE,OneTimeWorkRequestBuilder<EngineWorker>().setInputData(data).setInitialDelay((at-System.currentTimeMillis()).coerceAtLeast(0),TimeUnit.MILLISECONDS).build())
+    }
+    fun enqueue(kind: String,id: String="",key: String="",at: Long=0,response: String="",token: String="") {
+        val data=workDataOf("kind" to kind,"id" to id,"key" to key,"at" to at,"response" to response,"token" to token)
+        WorkManager.getInstance(context).enqueueUniqueWork("event:$kind:$id:$key:$token",ExistingWorkPolicy.APPEND_OR_REPLACE,OneTimeWorkRequestBuilder<EngineWorker>().setInputData(data).build())
+    }
+    fun periodicRecovery() {
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork("recovery",ExistingPeriodicWorkPolicy.KEEP,PeriodicWorkRequestBuilder<EngineWorker>(15,TimeUnit.MINUTES).setInputData(workDataOf("kind" to "reconcile")).build())
+    }
+    private fun geofenceIntent(): PendingIntent = PendingIntent.getBroadcast(context,0,Intent(context,GeofenceReceiver::class.java).setAction("dev.flowstate.GEOFENCE"),PendingIntent.FLAG_UPDATE_CURRENT or if(Build.VERSION.SDK_INT>=31) PendingIntent.FLAG_MUTABLE else 0)
+    suspend fun register(locations: List<LocationEntity>): String? {
+        val client=LocationServices.getGeofencingClient(context)
+        if(!playServices()) return "Google Play Services unavailable"
+        try { client.removeGeofences(geofenceIntent()).await() } catch(e: Exception) { return "Geofence removal failed: ${e.message}" }
+        if(locations.isEmpty()) return null
+        if(!precise() || !background()) return "Precise and background location required"
+        if(!locationEnabled()) return "Device location is disabled"
+        if(locations.size>100) return "More than 100 locations; disable some automations"
+        return try {
+            val fences=locations.map { Geofence.Builder().setRequestId(it.id).setCircularRegion(it.latitude,it.longitude,it.radius).setExpirationDuration(Geofence.NEVER_EXPIRE).setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT or Geofence.GEOFENCE_TRANSITION_DWELL).setLoiteringDelay(120000).setNotificationResponsiveness(120000).build() }
+            client.addGeofences(GeofencingRequest.Builder().setInitialTrigger(0).addGeofences(fences).build(),geofenceIntent()).await(); null
+        } catch(e: Exception) { "Geofence registration failed: ${e.message}" }
+    }
+    fun cancelNotification(execution: String) { NotificationManagerCompat.from(context).cancel(execution,1) }
+    fun notification(execution: String,effect: Effect): Boolean {
+        if(effect.kind=="cancel") { cancelNotification(execution); return true }
+        if(!notificationsAllowed()) return false
+        val manager=context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel("workflows","Workflow interactions",NotificationManager.IMPORTANCE_DEFAULT))
+        val open=PendingIntent.getActivity(context,0,Intent(context,MainActivity::class.java).setData(Uri.parse("flowstate://execution/$execution")).putExtra("execution",execution),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val n=NotificationCompat.Builder(context,"workflows").setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(effect.title).setContentText(effect.body.ifBlank { effect.interaction?.options?.joinToString(" · ") ?: "" }).setStyle(NotificationCompat.BigTextStyle().bigText(effect.body)).setContentIntent(open).setAutoCancel(effect.interaction==null).setOnlyAlertOnce(true).setGroup("flowstate")
+        effect.interaction?.let { i ->
+            n.setContentText("Open to respond · ${i.kind}")
+            if(i.kind in setOf("choice","yesno","confirm")) i.options.take(2).forEachIndexed { index,label ->
+                val intent=Intent(context,ResponseReceiver::class.java).setData(Uri.parse("flowstate://respond/$execution/${i.token}/$index")).putExtra("id",execution).putExtra("token",i.token).putExtra("response",label)
+                val action=PendingIntent.getBroadcast(context,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                n.addAction(0,label,action)
+            }
+            n.addAction(0,"Open choices",open)
+            i.deadline?.let { n.setTimeoutAfter((it-System.currentTimeMillis()).coerceAtLeast(1)) }
+        }
+        NotificationManagerCompat.from(context).notify(execution,1,n.build()); return true
+    }
+}

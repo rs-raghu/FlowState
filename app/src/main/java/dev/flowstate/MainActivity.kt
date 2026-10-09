@@ -3,14 +3,15 @@ package dev.flowstate
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.ViewModelProvider
+import dev.flowstate.ui.*
 
 class MainActivity : ComponentActivity() {
+    private val vm by lazy { ViewModelProvider(this)[FlowViewModel::class.java] }
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { Surface(Modifier.fillMaxSize()) { Column(Modifier.padding(24.dp)) { Text("FlowState", style = MaterialTheme.typography.headlineLarge); Text("Your personal automation workspace") } } } }
+        super.onCreate(savedInstanceState); enableEdgeToEdge()
+        setContent { FlowState(vm,intent.getStringExtra("execution")) }
     }
+    override fun onResume() { super.onResume(); vm.reconcile() }
 }

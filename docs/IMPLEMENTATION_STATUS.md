@@ -20,3 +20,11 @@ Implemented versioned IR, Blockly parsing, strict native validation, scoped valu
 Blockly 13.3.0 is bundled with local media and license. Custom blocks, JSON serialization, undo/redo, zoom, search and cleanup implemented. Frontend tests passed (2 suites covering every block and template IDs). Browser bundle generated. Native origin-restricted bridge and simulator sheet added; Android compilation still pending.
 Build correction: Compose 2026.08 requires SDK 37/AGP 9.1+, so the SDK 36 toolchain uses the compatible stable 2025.10 BOM. Full current-stack migration is deferred, not silently claimed.
 
+
+## Stages 5–8 — platform execution integration
+Native AlarmManager adapters, inexact fallback, durable WorkManager delivery, boot/clock recovery, Play Services geofencing, registration diagnostics, interactive notification actions, checklist/text/number response UI, scoped Room variables and transactional coordinator implemented. Trigger deduplication and response tokens are persisted. Device-dependent behavior has not been tested; adb reports no connected devices.
+## Stage 9 — simulator
+In-memory runtime with ISO clock, timezone, step/run/pause/restart, wait-time advance, response injection, trace and editor block highlighting. Simulation never invokes production adapters. Rich occupancy/permission input controls and breakpoint stopping remain open.
+## Stage 10 — native workflows and backup
+Five sections, creation templates, search/filter/sort, rename/copy/delete protection, themes, onboarding, permission health, diagnostics and bounded transactional workspace/location backup implemented. Map pin selection and richer notification configuration remain open. Android compilation pending.
+
