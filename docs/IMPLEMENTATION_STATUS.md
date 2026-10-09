@@ -1,42 +1,37 @@
 # Implementation status
 
-Latest milestone: queued schedule delivery is version checked; valid already queued alarms survive reconciliation. Cancellation removes pending worker delivery and stale notification outbox entries. Catch-up ASK uses a persisted interaction. Editor blocks carry v1 metadata and local media paths. Integer arithmetic preserves INTEGER types and exact Long precision, rejects overflow, and comparisons avoid Double rounding. CI and a local verification script are included. Historical notes below describe the state at each commit, not the current gap inventory.
+As of 2026-10-09, FlowState has a buildable native Android implementation and verified debug/unsigned release APKs. It is **not fully complete or production accepted** against PROJECT_BRIEF.md. See KNOWN_LIMITATIONS.md for functional gaps and TESTING.md for all 30 acceptance gates. Historical development milestones are preserved in Git commits.
 
-Advanced controls added: WAIT CLOCK and SET TIMEOUT with persisted deadlines and DST handling; simulator breakpoints, pause/continue retaining the blocked state, mock occupancy, scoped variable injection, notification-permission display and next-trigger inspection. Compiler rejects loop control outside loops and incompatible global variable declarations; saving rejects a type change over an existing non-null persistent value. Eight example scenarios are editable and pass Blockly/native validation. Sequential BRANCHES and incomplete device verification still prevent full release acceptance.
+## Implemented inventory
 
-## Stage 1 — architecture
+| Area | Current implementation | Verification boundary |
+|---|---|---|
+| Native foundation | Kotlin/Compose MVVM, five native sections, StateFlow, Room schema 1, DataStore, WorkManager, explicit app container | Compiles; lint zero errors; no device launch |
+| Compiler | Blockly JSON to versioned typed IR, stable IDs/v1 block metadata, bounded parse/graph/expressions, resource/dependency checks, loop context, defaults, shared/persisted type checks | JVM and Blockly tests pass; some general field errors lack block remediation metadata |
+| Runtime | Branches/switch, strict expressions, local/automation/global values, checked integers, bounded loops/frames/calls, TRY, snapshots and transitive library, durable waits/interactions/deadlines | 36 JVM tests pass; Android integration remains pending |
+| Editor | Bundled Blockly 13.3.0/media/license, categories, drag connections, undo/redo, search/cleanup/zoom, JSON restore/copy, origin/main-frame native bridge, validation highlighting | Four headless Node tests pass; actual WebView/touch/accessibility pending |
+| Time | Daily/weekdays/weekly/monthly/date/interval/once/weekly-window recurrences, multiple times, zones/DST, exact/inexact fallback, versioned queued deliveries, dedup keys | Pure boundary tests pass; actual alarm/reboot/permission behavior pending |
+| Recovery | Serialized continuations, execution wakes, boot/update/clock/zone/foreground/periodic reconciliation, window/grace catch-up, diagnostic skip/record, persisted ASK prelude | Pure key/snapshot tests pass; physical lifecycle recovery pending |
+| Locations | Saved coordinates/current position, enabled state, descriptions, offline geographic map/pin/radius; Play Services enter/exit/dwell/status; days/dates/zones/overnight eligibility; stale UNKNOWN occupancy | Eligibility tests pass; registrations/movement/battery pending |
+| Interactions | Choice/yesno/confirm/text/number/checklist, per-choice branches, required/optional progress, timeout/cancel, bounded snooze, token validation, owned notification/outbox delivery and denied-permission diagnostics | Native semantics pass core tests; notification/Activity interaction tests pending |
+| Advanced control | WAIT duration/instant/clock/condition, SET TIMEOUT, REPEAT/WHILE/BREAK/CONTINUE, CALL input/result/RETURN, TRY, assertions/logs | Core tests pass; BRANCHES remains sequential A then B |
+| Simulator | Memory-only real interpreter, clock/zone, step/run/pause/continue/restart/stop, waits/responses, breakpoint pause, mock occupancy/scoped variables/notification permission, next-trigger inspection and traces | Isolation/breakpoint core tests pass; Compose UI pending |
+| Management | Create/name/edit/copy/delete/search/filter/sort/enable/manual run, dependency protection, dashboard/history/diagnostics, themes/onboarding and permission health | Compiles/lints; CRUD and permission device checks pending |
+| Backup/examples | Bounded transactional workspace/location JSON, compile-before-write, duplicate/reference/cycle/type protection, imported disabled; eight editable examples (ten workflows) | Examples compile and roundtrip; four native DB tests compiled, unexecuted |
+| Delivery | Standard debug APK and unsigned R8 release APK, optional environment signing, CI APK upload, build/install/user/developer guides, repository and risk audits | APK signature/metadata/hash inspection passes; installation and signed-release launch pending |
 
-The remote repository was empty and has been cloned without overwriting existing files. Architecture, decisions, requirements traceability and original brief are recorded. Java 23 and Node are present. Android SDK and Gradle are being provisioned in ignored `.tools`.
+## Verification record
 
-Tests executed: repository inspection and remote reachability; no application tests yet.
+- 36 JVM tests: zero failures/errors; 23 EngineTest, eleven ControlTest, two SampleTest.
+- Four Node tests: zero failures; every custom block, templates, fourth choice and all example workspaces serialize/reload.
+- Native build: engine tests, debug assembly, lintDebug, instrumentation-test compilation and unsigned release assembly succeeded. Lint retains 25 warnings, zero errors; warnings are reviewed in TESTING.md.
+- ktfmt 0.64: Kotlin language style, dry-run with fail-if-changed passes.
+- Debug APK: package dev.flowstate, version 0.1.0, min API 29/target 36, MAIN activity, valid APK Signature Scheme v2 debug signature. Merged manifest has no Internet permission, disables automatic backup/cleartext and keeps app operational receivers non-exported. Library components and permissions are covered in SECURITY.md.
+- GitHub Actions now passes after explicitly provisioning sdkmanager and pinning supported actions. Exact run/artifact evidence is recorded in BUILD_ARTIFACTS.md.
+- No Android target connected; instrumentation, installation/launch and all end-to-end acceptance gates remain unexecuted. No result is inferred from a compiled test or APK.
 
-Open work: stages 2–12, all app functionality, build and device validation. No APK exists yet. Do not treat this milestone as an application delivery.
+## Remaining release work
 
-## Stage 2 — native foundation
-Gradle configuration, manifest, initial Compose host and normalized Room schema implemented. Android SDK 36 has been installed locally. Compilation is running; this milestone is not yet build-verified. Dependency resolution is still in progress. Hilt is deferred in favor of an explicit application-owned dependency container; full screen wiring follows integration.
+Resolve the documented parallel/JOIN, rich notification, reusable/template/policy, simulator, backup/history and current-stack gaps; execute native tests and the acceptance procedures on Android; repair observed issues; then repeat focused build/runtime verification. No signing credentials were provided. The existing unsigned release configuration supports a private key supplied through documented environment variables.
 
-
-## Stage 3 — compiler and interpreter
-Implemented versioned IR, Blockly parsing, strict native validation, scoped values, expression evaluation, snapshots, persisted frames, wait/response deadlines, bounded loops, calls and error handlers. JVM test run succeeded: 16 tests, no failures. Includes branches, process-independent serialized waits, duplicate/expired responses, loops, weekly recovery, DST, malformed input and stale occupancy. Android integration is not yet verified.
-
-
-## Stage 4 — offline Blockly editor
-Blockly 13.3.0 is bundled with local media and license. Custom blocks, JSON serialization, undo/redo, zoom, search and cleanup implemented. Frontend tests passed (2 suites covering every block and template IDs). Browser bundle generated. Native origin-restricted bridge and simulator sheet added; Android compilation still pending.
-Build correction: Compose 2026.08 requires SDK 37/AGP 9.1+, so the SDK 36 toolchain uses the compatible stable 2025.10 BOM. Full current-stack migration is deferred, not silently claimed.
-
-
-## Stages 5–8 — platform execution integration
-Native AlarmManager adapters, inexact fallback, durable WorkManager delivery, boot/clock recovery, Play Services geofencing, registration diagnostics, interactive notification actions, checklist/text/number response UI, scoped Room variables and transactional coordinator implemented. Trigger deduplication and response tokens are persisted. Device-dependent behavior has not been tested; adb reports no connected devices.
-## Stage 9 — simulator
-In-memory runtime with ISO clock, timezone, step/run/pause/restart, wait-time advance, response injection, trace and editor block highlighting. Simulation never invokes production adapters. Rich occupancy/permission input controls and breakpoint stopping remain open.
-## Stage 10 — native workflows and backup
-Five sections, creation templates, search/filter/sort, rename/copy/delete protection, themes, onboarding, permission health, diagnostics and bounded transactional workspace/location backup implemented. Map pin selection and richer notification configuration remain open. Android compilation pending.
-
-
-## Audit improvements
-Added bounded JSON preflight, stricter expression checks, serialized coordinator operations, snooze wake correction, separate informational notification identity, consistent catch-up IDs, per-choice dynamic Blockly branches, saved-resource dropdowns, reusable input/return values and transitive definition snapshots. JVM tests now include JSON bounds, recovery identity, reusable snapshots and fourth-choice routing. An offline Natural Earth geographic map with tap placement and radius rendering is implemented; no street tiles or search provider. Latest Android build is still running after repairing copied dependency artifacts inside the workspace cache.
-
-
-## Verified build milestone
-2026-10-09: native Kotlin compilation, 20 JVM tests, debug APK assembly, Android lint, instrumentation-test compilation and unsigned R8 release assembly all succeeded. Blockly frontend: 3 tests passed and assets rebuilt. Android instrumentation tests were compiled, not executed; no device/emulator is connected. Permission revocation, Android-10 import compatibility and reactive editor state lint defects were corrected without suppressing checks. Kotlin sources formatted with ktfmt 0.64. Debug APK exists at app/build/outputs/apk/debug/app-debug.apk. The app is still not accepted as production-complete: remaining specification gaps and device release gates follow in the status inventory.
-
+Every completed stage/improvement is committed and pushed to the requested repository. Build outputs, SDKs, caches and signing keys remain outside version control.
