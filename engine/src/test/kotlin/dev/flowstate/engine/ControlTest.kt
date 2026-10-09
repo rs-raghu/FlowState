@@ -8,6 +8,53 @@ import org.junit.Test
 
 class ControlTest {
     @Test
+    fun locationOvernightWindowUsesItsStartingDayAndDate() {
+        val t =
+            Trigger(
+                kind = "location",
+                locationId = "home",
+                days = listOf(5),
+                eligibleFrom = "22:00",
+                eligibleTo = "02:00",
+                startDate = "2026-10-09",
+                endDate = "2026-10-09",
+                zone = "UTC",
+            )
+        Scheduling.validate(t)
+        val zone = java.time.ZoneId.of("Asia/Kolkata")
+        fun eligible(time: String) =
+            Scheduling.locationEligible(t, Instant.parse(time).toEpochMilli(), zone)
+        assertTrue(eligible("2026-10-09T23:00:00Z"))
+        assertTrue(eligible("2026-10-10T01:59:59Z"))
+        assertFalse(eligible("2026-10-10T02:00:00Z"))
+        assertFalse(eligible("2026-10-10T23:00:00Z"))
+        assertFalse(eligible("2026-10-09T12:00:00Z"))
+        assertFails { Scheduling.validate(t.copy(eligibleTo = "")) }
+        assertTrue(
+            Scheduling.locationEligible(
+                t.copy(eligibleFrom = "", eligibleTo = ""),
+                Instant.parse("2026-10-09T12:00:00Z").toEpochMilli(),
+                zone,
+            )
+        )
+    }
+
+    @Test
+    fun timeArithmeticRejectsOverflowWithoutNegatingLongMinValue() {
+        val context = EvaluationContext(0, "UTC", emptyMap(), emptyMap(), "a")
+        val expression =
+            Expr(
+                "subtractDuration",
+                args =
+                    listOf(
+                        Expr("literal", Value(Type.INSTANT, "0")),
+                        Expr("literal", Value(Type.DURATION, Long.MIN_VALUE.toString())),
+                    ),
+            )
+        assertFailsWith<ArithmeticException> { Expressions.evaluate(expression, context) }
+    }
+
+    @Test
     fun executionDeadlineCapsWaitAndSurvivesSerialization() {
         val d =
             Definition(

@@ -265,6 +265,8 @@ object Compiler {
                 cooldownSeconds = (f["COOLDOWN"] ?: "300").toLong(),
                 catchUp = f["CATCHUP"] ?: "skip",
                 windowDay = (f["WINDOWDAY"] ?: "5").toInt(),
+                eligibleFrom = f["ELIGIBLEFROM"] ?: "",
+                eligibleTo = f["ELIGIBLETO"] ?: "",
             )
         val entry = chain(top["next"]?.jsonObject?.get("block")?.jsonObject, 0)
         val d =

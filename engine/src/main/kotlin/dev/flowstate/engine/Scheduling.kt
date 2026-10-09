@@ -37,6 +37,17 @@ object Scheduling {
         if (t.kind == "location") {
             require(t.locationId.isNotBlank())
             require(t.transition in setOf("enter", "exit", "dwell"))
+            zone(t, ZoneId.of("UTC"))
+            require(t.days.isNotEmpty() && t.days.all { it in 1..7 })
+            if (t.eligibleFrom.isNotEmpty() || t.eligibleTo.isNotEmpty()) {
+                LocalTime.parse(t.eligibleFrom)
+                LocalTime.parse(t.eligibleTo)
+            }
+            if (t.startDate.isNotEmpty()) LocalDate.parse(t.startDate)
+            if (t.endDate.isNotEmpty()) {
+                LocalDate.parse(t.endDate)
+                require(t.startDate.isEmpty() || t.endDate >= t.startDate)
+            }
         }
         if (t.kind != "time") return
         zone(t, ZoneId.of("UTC"))
@@ -72,6 +83,22 @@ object Scheduling {
     // java.time moves gap times forward by the gap and picks the earlier offset during overlaps.
     fun resolve(date: LocalDate, time: LocalTime, zone: ZoneId): Long =
         date.atTime(time).atZone(zone).withEarlierOffsetAtOverlap().toInstant().toEpochMilli()
+
+    fun locationEligible(t: Trigger, at: Long, device: ZoneId): Boolean {
+        if (t.kind != "location") return false
+        val current = Instant.ofEpochMilli(at).atZone(zone(t, device))
+        var date = current.toLocalDate()
+        if (t.eligibleFrom.isNotEmpty()) {
+            val start = LocalTime.parse(t.eligibleFrom)
+            val end = LocalTime.parse(t.eligibleTo)
+            if (start != end && !Expressions.inTimeRange(current.toLocalTime(), start, end))
+                return false
+            if (start > end && current.toLocalTime() < end) date = date.minusDays(1)
+        }
+        return date.dayOfWeek.value in t.days &&
+            (t.startDate.isEmpty() || date >= LocalDate.parse(t.startDate)) &&
+            (t.endDate.isEmpty() || date <= LocalDate.parse(t.endDate))
+    }
 
     fun eligible(t: Trigger, date: LocalDate): Boolean {
         if (

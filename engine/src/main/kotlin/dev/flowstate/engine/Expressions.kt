@@ -182,7 +182,7 @@ object Expressions {
             "elapsed" -> {
                 val a = arg(0)
                 require(a.type == Type.INSTANT)
-                Value(Type.DURATION, (c.now - a.text.toLong()).toString())
+                Value(Type.DURATION, Math.subtractExact(c.now, a.text.toLong()).toString())
             }
             "addDuration",
             "subtractDuration" -> {
@@ -191,10 +191,8 @@ object Expressions {
                 require(a.type == Type.INSTANT && b.type == Type.DURATION)
                 Value(
                     Type.INSTANT,
-                    Math.addExact(
-                            a.text.toLong(),
-                            if (e.op == "addDuration") b.text.toLong() else -b.text.toLong(),
-                        )
+                    (if (e.op == "addDuration") Math.addExact(a.text.toLong(), b.text.toLong())
+                        else Math.subtractExact(a.text.toLong(), b.text.toLong()))
                         .toString(),
                 )
             }

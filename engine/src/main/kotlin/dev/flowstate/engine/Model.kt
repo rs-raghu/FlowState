@@ -103,6 +103,8 @@ data class Trigger(
     val catchUp: String = "skip",
     val graceSeconds: Long = 3600,
     val windowDay: Int = 5,
+    val eligibleFrom: String = "",
+    val eligibleTo: String = "",
 )
 
 @Serializable

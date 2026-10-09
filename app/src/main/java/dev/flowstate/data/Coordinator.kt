@@ -447,7 +447,12 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             .filter { it.enabled }
             .forEach { a ->
                 val t = codec.decodeFromString<Definition>(a.definition).trigger
-                if (t.kind == "location" && t.locationId == id && t.transition == transition)
+                if (
+                    t.kind == "location" &&
+                        t.locationId == id &&
+                        t.transition == transition &&
+                        Scheduling.locationEligible(t, at, ZoneId.systemDefault())
+                )
                     startInternal(a.id, "geo:$id:$transition:$at", true)
             }
     }
