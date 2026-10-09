@@ -8,6 +8,35 @@ import org.junit.Test
 
 class ControlTest {
     @Test
+    fun suspendedCallerDeclarationsRemainProtectedInsideChildWorkflow() {
+        val caller =
+            Definition(
+                id = "caller",
+                entry = "call",
+                variables = listOf(Variable("owned", Type.INTEGER, Scope.AUTOMATION)),
+                nodes = listOf(Node("call", "call", fields = mapOf("WORKFLOW" to "child"))),
+            )
+        val child =
+            Definition(
+                id = "child",
+                entry = "wait",
+                nodes = listOf(Node("wait", "wait", fields = mapOf("SECONDS" to "10"))),
+            )
+        val runtime = Runtime { if (it == "child") child else null }
+        val waiting = runtime.tick(runtime.start("caller", caller, 0), 0, "UTC").execution
+        assertEquals("child", waiting.definition.id)
+        assertTrue(waiting.capturedDefinitions().any { it.id == "caller" })
+        val edited =
+            caller.copy(
+                version = 2,
+                variables = listOf(Variable("owned", Type.STRING, Scope.AUTOMATION)),
+            )
+        assertTrue(
+            Compiler.validateSharedVariables(waiting.capturedDefinitions() + edited).isNotEmpty()
+        )
+    }
+
+    @Test
     fun textBoundsAndResponseVariableAreValidatedBeforeAndAfterWaiting() {
         val q =
             Node(

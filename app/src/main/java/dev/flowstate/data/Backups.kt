@@ -81,7 +81,7 @@ class Backups(private val db: FlowDatabase) {
         val active =
             dao.active().flatMap { row ->
                 val execution = codec.decodeFromString<Execution>(row.snapshot)
-                listOf(execution.definition) + execution.library.values
+                execution.capturedDefinitions()
             }
         val sharedIssues = Compiler.validateSharedVariables(existing + active + definitions.values)
         if (sharedIssues.isNotEmpty()) throw ValidationException(sharedIssues)

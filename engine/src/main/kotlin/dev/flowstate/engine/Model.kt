@@ -193,6 +193,9 @@ data class Execution(
     val deadline: Long? = null,
 )
 
+fun Execution.capturedDefinitions(): List<Definition> =
+    listOf(definition) + library.values + frames.mapNotNull { it.definition }
+
 @Serializable
 data class Effect(
     val id: String,

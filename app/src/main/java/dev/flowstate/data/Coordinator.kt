@@ -160,7 +160,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         val activeDefinitions =
             dao.active().flatMap { row ->
                 val execution = codec.decodeFromString<Execution>(row.snapshot)
-                listOf(execution.definition) + execution.library.values
+                execution.capturedDefinitions()
             }
         val sharedIssues = Compiler.validateSharedVariables(all.values + activeDefinitions)
         if (sharedIssues.isNotEmpty()) throw ValidationException(sharedIssues)
