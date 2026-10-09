@@ -132,7 +132,10 @@ class AppSmokeTest {
         open()
         navigate("Activity")
         compose.onAllNodesWithText("Yes")[1].performScrollTo().performClick()
-        compose.waitUntil(10_000) { pending().size == 1 }
+        compose.waitUntil(10_000) {
+            pending().singleOrNull()?.title == "Branch A question" &&
+                compose.onAllNodesWithText("Branch B question").fetchSemanticsNodes().isEmpty()
+        }
         compose.onNodeWithText("Branch A question").assertExists()
         compose.onNodeWithText("Branch B question").assertDoesNotExist()
         compose.onNodeWithText("Yes").performScrollTo().performClick()
