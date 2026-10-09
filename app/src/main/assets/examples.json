@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "automations": [
+    {
+      "id": "eb69fcea-ffda-4ec5-87c7-1cf37b01914c",
+      "name": "1. Leaving Hostel",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"f5958150-19c9-4d3e-8b53-f997ba804e2b\",\"fields\":{\"KIND\":\"location\",\"LOCATION\":\"3729bd2c-3f33-43bb-8ca6-ab96d71cfff0\",\"TRANSITION\":\"exit\",\"COOLDOWN\":300},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_if\",\"id\":\"a0df3c5f-62ed-49c8-80d2-4791d14e4f0d\",\"fields\":{},\"extraState\":{\"version\":1},\"inputs\":{\"TEST\":{\"block\":{\"type\":\"fs_expr\",\"id\":\"c8d40493-f4f3-4ae0-8574-56358ce72d9d\",\"fields\":{\"OP\":\"le\"},\"extraState\":{\"version\":1},\"inputs\":{\"A\":{\"block\":{\"type\":\"fs_expr\",\"id\":\"2dda14ef-42ed-49d7-8916-13be0a07acb6\",\"fields\":{\"OP\":\"weekday\"},\"extraState\":{\"version\":1}}},\"B\":{\"block\":{\"type\":\"fs_value\",\"id\":\"d01c7810-79cd-4808-83e5-0096392054a3\",\"fields\":{\"TYPE\":\"INTEGER\",\"VALUE\":\"5\"},\"extraState\":{\"version\":1}}}}}},\"YES\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"9b8403bf-9b5b-4930-8664-83a5eeed448d\",\"fields\":{\"KIND\":\"choice\",\"TITLE\":\"Where are you going?\",\"OPTIONS\":\"Class|Mess|Gym|Going Out\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":4},\"inputs\":{\"CHOICE0\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"5d09ead0-e1a8-481b-88bd-a5d692976ebf\",\"fields\":{\"KIND\":\"choice\",\"TITLE\":\"Lecture or Lab?\",\"OPTIONS\":\"Lecture|Lab\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":2},\"inputs\":{\"CHOICE0\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"20cec7b8-617d-47d6-860a-daa1b67344de\",\"fields\":{\"TITLE\":\"Lecture\",\"OPTIONS\":\"Notebook|Pen|ID card\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}},\"CHOICE1\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"301b2bd1-da47-497b-82a4-bc5b1979e11b\",\"fields\":{\"TITLE\":\"Lab\",\"OPTIONS\":\"Lab coat|Lab record|ID card\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}}}}},\"CHOICE1\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"89453e91-a2a1-4625-82b5-6f5de9397754\",\"fields\":{\"TITLE\":\"Mess\",\"OPTIONS\":\"Protein powder|?Water\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}},\"CHOICE2\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"948ec1ad-cc96-4784-89f4-6777a15e0ded\",\"fields\":{\"TITLE\":\"Gym\",\"OPTIONS\":\"Towel|Shoes|Water\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}},\"CHOICE3\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"a6b8867e-7755-45d5-89a0-b15e50b66894\",\"fields\":{\"TITLE\":\"Going Out\",\"OPTIONS\":\"Wallet|ID card|Keys\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}}}}}}}}}]}}"
+    },
+    {
+      "id": "e08405ee-7be9-4d0f-8354-8326d7a0394f",
+      "name": "2. Morning Routine",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"c8b5874f-811d-4030-8558-fbb16a9d767a\",\"fields\":{\"KIND\":\"time\",\"TIMES\":\"07:30\",\"RECURRENCE\":\"weekdays\",\"DAYS\":\"1,2,3,4,5\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_message\",\"id\":\"9ddcc9cb-4a38-486c-8393-1a9c5e61b95e\",\"fields\":{\"TITLE\":\"Good morning\",\"BODY\":\"Plan your day\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"8c00c185-a2a5-4c43-85ac-d18e8e6fd9a9\",\"fields\":{\"KIND\":\"yesno\",\"TITLE\":\"Do you have class today?\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":0},\"inputs\":{\"YES\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"30f581c2-0635-4d73-8f02-1d4744dc312d\",\"fields\":{\"TITLE\":\"Morning\",\"OPTIONS\":\"Breakfast|Notebook|Keys\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}},\"NO\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"b7b001fc-6e69-455d-824f-bb4475e2fc28\",\"fields\":{\"KIND\":\"choice\",\"TITLE\":\"Study or relax?\",\"OPTIONS\":\"Study|Relax\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":2},\"inputs\":{\"CHOICE0\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"4b0c6ce6-b2aa-47d8-8520-6b7141173406\",\"fields\":{\"TITLE\":\"Study\",\"OPTIONS\":\"Choose a topic|Set a study timer\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}},\"CHOICE1\":{\"block\":{\"type\":\"fs_message\",\"id\":\"60606efd-2cc2-4f80-877f-3f20a96b746e\",\"fields\":{\"TITLE\":\"Relax\",\"BODY\":\"Enjoy a quiet morning\"},\"extraState\":{\"version\":1}}}}}}}}}}}}]}}"
+    },
+    {
+      "id": "83a768a4-17b8-4e08-8828-171c622e99c0",
+      "name": "3. Weekly Task",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"b44d7744-402a-41dc-8ef7-d81964d84128\",\"fields\":{\"KIND\":\"time\",\"TIMES\":\"09:00\",\"RECURRENCE\":\"weeklyWindow\",\"WINDOWDAY\":5,\"CATCHUP\":\"window\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"683c5629-827c-423b-899f-1c7c4b123f13\",\"fields\":{\"TITLE\":\"Weekly review\",\"OPTIONS\":\"Review the week|Plan next week\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}}}]}}"
+    },
+    {
+      "id": "f2e4a0c3-bbfb-4b59-8ab8-f866925075ac",
+      "name": "4. Delayed Follow-up",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"232a406f-c3b3-4246-8598-e3324638c20e\",\"fields\":{\"KIND\":\"location\",\"LOCATION\":\"cf7f0759-0971-4a05-8b5d-ff83a964d714\",\"TRANSITION\":\"exit\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_wait\",\"id\":\"a42e8572-1846-4823-8452-77a073279c0f\",\"fields\":{\"SECONDS\":900},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"4aa02a77-fdf0-4741-802b-e97df1c7b8e6\",\"fields\":{\"KIND\":\"yesno\",\"TITLE\":\"Have you had your post-workout meal?\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":0},\"inputs\":{\"NO\":{\"block\":{\"type\":\"fs_wait\",\"id\":\"5bd923cc-d485-4b28-8440-52db04434807\",\"fields\":{\"SECONDS\":600},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"b262fa38-d9c6-41c4-8934-3cc1b201c8ea\",\"fields\":{\"KIND\":\"yesno\",\"TITLE\":\"Final meal reminder\",\"TIMEOUT\":600},\"extraState\":{\"version\":1,\"choices\":0}}}}}}}}}}}]}}"
+    },
+    {
+      "id": "fe43eb87-70fc-4724-888f-47d98574c2b5",
+      "name": "5a. Prepare Tomorrow",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"9c6c2a15-8cd7-41c4-8b74-f5aeab4610e9\",\"fields\":{\"KIND\":\"time\",\"TIMES\":\"21:00\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_variable\",\"id\":\"e73d2859-da96-4962-8f4a-c68537737a0c\",\"fields\":{\"NAME\":\"prepared\",\"TYPE\":\"BOOLEAN\",\"SCOPE\":\"GLOBAL\",\"DEFAULT\":\"false\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"9808aeb6-9cd5-4532-896a-708706ea151c\",\"fields\":{\"KIND\":\"yesno\",\"TITLE\":\"Did you prepare tomorrow's essentials?\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":0},\"inputs\":{\"YES\":{\"block\":{\"type\":\"fs_set\",\"id\":\"6287008f-a9f9-4ce7-8ca2-d8974e06efd8\",\"fields\":{\"NAME\":\"prepared\",\"SCOPE\":\"GLOBAL\"},\"extraState\":{\"version\":1},\"inputs\":{\"VALUE\":{\"block\":{\"type\":\"fs_value\",\"id\":\"01bb9b44-f476-404d-8d11-b260ccf9e129\",\"fields\":{\"TYPE\":\"BOOLEAN\",\"VALUE\":\"true\"},\"extraState\":{\"version\":1}}}}}},\"NO\":{\"block\":{\"type\":\"fs_set\",\"id\":\"8a0bae6e-f2a1-4c91-81ba-711ebbc6439c\",\"fields\":{\"NAME\":\"prepared\",\"SCOPE\":\"GLOBAL\"},\"extraState\":{\"version\":1},\"inputs\":{\"VALUE\":{\"block\":{\"type\":\"fs_value\",\"id\":\"0c0eac1a-f3d8-45e1-8706-d79faeb94f51\",\"fields\":{\"TYPE\":\"BOOLEAN\",\"VALUE\":\"false\"},\"extraState\":{\"version\":1}}}}}}}}}}}}]}}"
+    },
+    {
+      "id": "56f00e74-2c16-4624-85e5-ecfccec83b4e",
+      "name": "5b. Preparation Check",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"601b36f9-aa94-4d1f-8d75-f519fcbce6c0\",\"fields\":{\"KIND\":\"time\",\"TIMES\":\"07:00\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_variable\",\"id\":\"c375c23d-8e11-482e-86ac-abc3b945d30c\",\"fields\":{\"NAME\":\"prepared\",\"TYPE\":\"BOOLEAN\",\"SCOPE\":\"GLOBAL\",\"DEFAULT\":\"false\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_if\",\"id\":\"ec98a229-f630-41b7-84ee-7f5a329e5cea\",\"fields\":{},\"extraState\":{\"version\":1},\"inputs\":{\"TEST\":{\"block\":{\"type\":\"fs_get\",\"id\":\"30224dc4-402c-41c5-8c2a-7416df9990cf\",\"fields\":{\"NAME\":\"prepared\",\"SCOPE\":\"GLOBAL\"},\"extraState\":{\"version\":1}}},\"YES\":{\"block\":{\"type\":\"fs_message\",\"id\":\"9aec1cac-cc3e-47ef-8ad4-02247b11a2a5\",\"fields\":{\"TITLE\":\"Ready\",\"BODY\":\"You prepared last night\"},\"extraState\":{\"version\":1}}},\"NO\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"2ac39bce-8d66-47e5-881b-9f9181bed7ef\",\"fields\":{\"TITLE\":\"Prepare now\",\"OPTIONS\":\"Keys|Wallet|Notebook\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}}},\"next\":{\"block\":{\"type\":\"fs_set\",\"id\":\"1e51d5fd-8a4b-458f-88e6-2e228e38a603\",\"fields\":{\"NAME\":\"prepared\",\"SCOPE\":\"GLOBAL\"},\"extraState\":{\"version\":1},\"inputs\":{\"VALUE\":{\"block\":{\"type\":\"fs_value\",\"id\":\"5774747e-5724-4c0a-88cd-4e664365aca7\",\"fields\":{\"TYPE\":\"BOOLEAN\",\"VALUE\":\"false\"},\"extraState\":{\"version\":1}}}}}}}}}}}]}}"
+    },
+    {
+      "id": "02365582-3707-4047-8d36-d159275d98ac",
+      "name": "6. Notification Timeout",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"1d73d224-2bce-439d-8a8b-a204ba3323ce\",\"fields\":{\"KIND\":\"location\",\"LOCATION\":\"3729bd2c-3f33-43bb-8ca6-ab96d71cfff0\",\"TRANSITION\":\"exit\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"24f98c9a-d65a-444a-8e28-e3c65a655d8f\",\"fields\":{\"KIND\":\"choice\",\"TITLE\":\"Where are you going?\",\"OPTIONS\":\"Class|Gym|Other\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":3},\"inputs\":{\"CHOICE0\":{\"block\":{\"type\":\"fs_message\",\"id\":\"a2242aef-341a-42fe-82b5-59ba40e017c4\",\"fields\":{\"TITLE\":\"Class\",\"BODY\":\"\"},\"extraState\":{\"version\":1}}},\"CHOICE1\":{\"block\":{\"type\":\"fs_message\",\"id\":\"d3ada86c-99e8-4c4e-8c9d-295a72309606\",\"fields\":{\"TITLE\":\"Gym\",\"BODY\":\"\"},\"extraState\":{\"version\":1}}},\"CHOICE2\":{\"block\":{\"type\":\"fs_message\",\"id\":\"b02df468-8f5d-4a88-83d9-19210ca8e172\",\"fields\":{\"TITLE\":\"Other\",\"BODY\":\"\"},\"extraState\":{\"version\":1}}}}}}}]}}"
+    },
+    {
+      "id": "90951177-ee28-4519-8746-63fc61f94ab6",
+      "name": "7. Nested Conditions",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"f09014d2-7a28-4bec-8a82-33e6defb2239\",\"fields\":{\"KIND\":\"location\",\"LOCATION\":\"3cf91b0c-442c-4107-8998-52ff64ee6b10\",\"TRANSITION\":\"enter\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_if\",\"id\":\"dd26502b-5c80-4d3d-877a-6d2904d6c6f1\",\"fields\":{},\"extraState\":{\"version\":1},\"inputs\":{\"TEST\":{\"block\":{\"type\":\"fs_expr\",\"id\":\"0662b0e9-9fd3-41bd-8473-039475ff0bd8\",\"fields\":{\"OP\":\"and\"},\"extraState\":{\"version\":1},\"inputs\":{\"A\":{\"block\":{\"type\":\"fs_expr\",\"id\":\"682db839-42aa-488b-85fa-72f6ea1635bc\",\"fields\":{\"OP\":\"le\"},\"extraState\":{\"version\":1},\"inputs\":{\"A\":{\"block\":{\"type\":\"fs_expr\",\"id\":\"58eb4428-3906-463b-8210-a530f93dfff1\",\"fields\":{\"OP\":\"weekday\"},\"extraState\":{\"version\":1}}},\"B\":{\"block\":{\"type\":\"fs_value\",\"id\":\"ec26a0b3-4644-4038-8e30-30004e6813f4\",\"fields\":{\"TYPE\":\"INTEGER\",\"VALUE\":\"5\"},\"extraState\":{\"version\":1}}}}}},\"B\":{\"block\":{\"type\":\"fs_expr\",\"id\":\"eec42639-7414-44f5-80fd-ab9134e687a7\",\"fields\":{\"OP\":\"betweenTime\"},\"extraState\":{\"version\":1},\"inputs\":{\"A\":{\"block\":{\"type\":\"fs_value\",\"id\":\"bdac2ef7-49c4-46d9-8bff-c6946c180f2f\",\"fields\":{\"TYPE\":\"STRING\",\"VALUE\":\"08:00\"},\"extraState\":{\"version\":1}}},\"B\":{\"block\":{\"type\":\"fs_value\",\"id\":\"4861426f-ef39-43b4-8945-bf9146b2accd\",\"fields\":{\"TYPE\":\"STRING\",\"VALUE\":\"17:00\"},\"extraState\":{\"version\":1}}}}}}}}},\"YES\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"029b70f9-58c7-4b10-8c55-5bd9372ab57c\",\"fields\":{\"KIND\":\"yesno\",\"TITLE\":\"Are you attending class?\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":0},\"inputs\":{\"YES\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"d0ab77b3-bcea-4205-8172-d18361936d8a\",\"fields\":{\"TITLE\":\"Class\",\"OPTIONS\":\"Notebook|Pen\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}},\"NO\":{\"block\":{\"type\":\"fs_message\",\"id\":\"8e89dbab-0f5c-44aa-813f-83fba471adf1\",\"fields\":{\"TITLE\":\"Visit\",\"BODY\":\"Enjoy your visit\"},\"extraState\":{\"version\":1}}}}}},\"NO\":{\"block\":{\"type\":\"fs_message\",\"id\":\"4fbd51eb-ca09-4cfe-8cb0-f1f4f9231fb6\",\"fields\":{\"TITLE\":\"Outside class hours\",\"BODY\":\"Check your schedule\"},\"extraState\":{\"version\":1}}}}}}}]}}"
+    },
+    {
+      "id": "0ba1fb6d-800d-4def-82f4-aeea9976ed57",
+      "name": "8b. Essential Items Checklist",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"fac97d4e-eae6-4c5d-8400-4167cacf4704\",\"fields\":{\"KIND\":\"manual\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_checklist\",\"id\":\"6173503d-42ff-41f0-8733-ab15599296c8\",\"fields\":{\"TITLE\":\"Essential Items\",\"OPTIONS\":\"Wallet|ID card|Keys\",\"TIMEOUT\":900},\"extraState\":{\"version\":1}}}}]}}"
+    },
+    {
+      "id": "72bc5abd-718f-46fc-8f4f-328e332a4ad4",
+      "name": "8a. Going Out",
+      "workspace": "{\"blocks\":{\"languageVersion\":0,\"blocks\":[{\"type\":\"fs_trigger\",\"id\":\"71d51089-b651-4b88-8560-b09f05c6c768\",\"fields\":{\"KIND\":\"manual\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_ask\",\"id\":\"dc82f499-bcfc-4ab3-8d45-d6c478e34a5f\",\"fields\":{\"KIND\":\"choice\",\"TITLE\":\"Where are you going?\",\"OPTIONS\":\"Going Out|Staying In\",\"TIMEOUT\":900},\"extraState\":{\"version\":1,\"choices\":2},\"inputs\":{\"CHOICE0\":{\"block\":{\"type\":\"fs_call\",\"id\":\"e0afcded-e7b5-4bda-8a98-ad0294372bdc\",\"fields\":{\"WORKFLOW\":\"0ba1fb6d-800d-4def-82f4-aeea9976ed57\"},\"extraState\":{\"version\":1},\"next\":{\"block\":{\"type\":\"fs_message\",\"id\":\"6891f3c5-3247-422c-80ff-dfa47882af27\",\"fields\":{\"TITLE\":\"Ready to go\",\"BODY\":\"Checklist complete\"},\"extraState\":{\"version\":1}}}}},\"CHOICE1\":{\"block\":{\"type\":\"fs_message\",\"id\":\"bb1bc6dc-2d72-4e47-8a88-a3756d1e55e9\",\"fields\":{\"TITLE\":\"Staying in\",\"BODY\":\"\"},\"extraState\":{\"version\":1}}}}}}}]}}"
+    }
+  ],
+  "locations": [
+    {
+      "id": "3729bd2c-3f33-43bb-8ca6-ab96d71cfff0",
+      "name": "Demo Hostel",
+      "latitude": 21.1458,
+      "longitude": 79.0882,
+      "radius": 150,
+      "description": "Demonstration coordinates. Edit to your actual place before enabling."
+    },
+    {
+      "id": "cf7f0759-0971-4a05-8b5d-ff83a964d714",
+      "name": "Demo Gym",
+      "latitude": 21.1508,
+      "longitude": 79.0882,
+      "radius": 150,
+      "description": "Demonstration coordinates. Edit to your actual place before enabling."
+    },
+    {
+      "id": "3cf91b0c-442c-4107-8998-52ff64ee6b10",
+      "name": "Demo Academic Building",
+      "latitude": 21.155800000000003,
+      "longitude": 79.0882,
+      "radius": 150,
+      "description": "Demonstration coordinates. Edit to your actual place before enabling."
+    }
+  ]
+}

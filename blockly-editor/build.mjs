@@ -6,3 +6,4 @@ await build({entryPoints:['editor.js'],bundle:true,outfile:destination+'/editor.
 await copyFile('index.html',destination+'/index.html');
 await cp('node_modules/blockly/media',destination+'/media',{recursive:true});
 await copyFile('node_modules/blockly/LICENSE',destination+'/BLOCKLY_LICENSE');
+await copyFile('../sample-workflows/examples.json','../app/src/main/assets/examples.json');

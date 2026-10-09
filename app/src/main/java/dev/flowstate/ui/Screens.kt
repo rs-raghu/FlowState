@@ -159,7 +159,17 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
                                     }
                                 }
                             if (automations.isEmpty())
-                                Text("Create an automation, then connect blocks below its trigger.")
+                                Panel {
+                                    Text(
+                                        "Create an automation, or explore eight editable example scenarios."
+                                    )
+                                    Text(
+                                        "Examples start disabled and use demo coordinates. Edit saved locations before enabling."
+                                    )
+                                    TextButton(onClick = { vm.addExamples() }) {
+                                        Text("Add example workflows")
+                                    }
+                                }
                             automations.take(4).forEach { a ->
                                 Panel {
                                     Text(a.name, style = MaterialTheme.typography.titleMedium)
@@ -799,6 +809,13 @@ private fun SettingsScreen(
             ) {
                 Text("Reconcile and refresh")
             }
+        }
+        Panel {
+            Text("Example workflows", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Add eight editable scenarios (ten workflows), including nested choices, scheduled routines, shared preparation state and a reusable checklist. They start disabled. Replace demo coordinates before enabling location triggers."
+            )
+            TextButton(onClick = { vm.addExamples() }) { Text("Add example workflows") }
         }
         Panel {
             Text("Local backup", style = MaterialTheme.typography.titleLarge)

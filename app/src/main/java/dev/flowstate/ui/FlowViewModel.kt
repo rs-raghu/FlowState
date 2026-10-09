@@ -79,6 +79,12 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
         onCreated(id)
     }
 
+    fun addExamples() = work {
+        val count = application.coordinator.importBackup(BuiltInExamples.source(application))
+        message.value =
+            "Added $count example workflows, disabled. Edit demo locations before enabling."
+    }
+
     fun saveLocation(
         id: String?,
         name: String,

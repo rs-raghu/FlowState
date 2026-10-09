@@ -123,11 +123,11 @@ class AppSmokeTest {
         }
         assertEquals(2, pending().size)
         if (Platform(app).notificationsAllowed()) {
-            val tags =
-                app.getSystemService(NotificationManager::class.java)
-                    .activeNotifications
-                    .mapNotNull { it.tag }
-            assertEquals(2, tags.count { it.startsWith("$executionId:question:") })
+            compose.waitUntil(10_000) {
+                app.getSystemService(NotificationManager::class.java).activeNotifications.count {
+                    it.tag?.startsWith("$executionId:question:") == true
+                } == 2
+            }
         }
         open()
         navigate("Activity")

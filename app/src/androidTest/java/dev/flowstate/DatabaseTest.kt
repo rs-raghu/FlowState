@@ -159,4 +159,30 @@ class DatabaseTest {
         dao.deleteAutomation("a")
         assertNull(dao.automation("a"))
     }
+
+    @Test
+    fun bundledExamplesImportAsIndependentDisabledCopies() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assertEquals(10, Backups(db).import(BuiltInExamples.source(context)))
+        val first = db.dao().automations().map { it.id }.toSet()
+        assertEquals(10, Backups(db).import(BuiltInExamples.source(context)))
+        val all = db.dao().automations()
+        assertEquals(20, all.size)
+        assertTrue(all.none { it.enabled })
+        assertEquals(6, db.dao().locations().size)
+        val copies = all.filter { it.id !in first }
+        val definitions = copies.map { codec.decodeFromString<Definition>(it.definition) }
+        val ids = copies.map { it.id }.toSet()
+        assertTrue(
+            definitions
+                .flatMap { it.nodes }
+                .filter { it.op == "call" }
+                .all { it.fields["WORKFLOW"] in ids }
+        )
+        assertTrue(
+            definitions
+                .filter { it.trigger.kind == "location" }
+                .all { db.dao().location(it.trigger.locationId) != null }
+        )
+    }
 }

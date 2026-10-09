@@ -2,7 +2,9 @@ name: Android verification
 on:
   push:
     branches: [main]
+    paths-ignore: ['**/*.md']
   pull_request:
+    paths-ignore: ['**/*.md']
 permissions:
   contents: read
 concurrency:
@@ -17,6 +19,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '23'
+          cache: gradle
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -50,6 +53,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '23'
+          cache: gradle
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;35.0.0'

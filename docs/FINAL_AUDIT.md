@@ -60,19 +60,19 @@ File/function: Platform permission/scheduling/notification/register functions; S
 
 ### AUD-013 — HIGH — Android acceptance has not executed
 
-Files/classes: app Android sources, DatabaseTest, TESTING.md AT table. Reproduction: install APK and execute the lifecycle/permission/geofence/UI procedures; environment currently has no connected Android target. Expected: actual observed results before production acceptance. Actual: build/lint/core tests only; native tests compiled. Required fix: physical API 29+ device or working emulator, run instrumentation and listed end-to-end tests, repair observed defects. Verification: **OPEN**, no passing device result claimed.
+Files/classes: app Android sources, native tests, TESTING.md AT table. API 29/36 KVM emulators now install/launch the app and pass nine database/UI/interaction tests (run 37967271781), including recreation, persisted progress and separate branch notifications/responses. This exposed and verified fixes for AUD-022/023. Physical process death/reboot, geofence movement, permission revocation, accessibility and battery acceptance remain **OPEN**; emulator smoke coverage does not certify all 30 gates.
 
-### AUD-014 — HIGH — Parallel/JOIN semantics incomplete
+### AUD-014 — HIGH — Parallel/JOIN previously blocked sibling progress
 
-File/function: Runtime.tickBranches, catalogue.js PARALLEL. Previous reproduction: A waited one hour and blocked B's message. Fix: persisted branch executions and round-robin position, earliest wake, independent tokens/notification tags, isolated local merge with conflict rejection, ordered persistent values, JOIN/failure/TRY propagation, shared budgets and parent cancellation guards. Verification: twelve dedicated parallel regressions; native concurrent question/notification case compiled and awaiting CI. **Core correction verified; physical stress/lifecycle acceptance remains open.**
+File/function: Runtime.tickBranches, catalogue.js PARALLEL. Previous reproduction: A waited one hour and blocked B's message. Fix: persisted branch executions and round-robin position, earliest wake, independent tokens/notification tags, isolated local merge with conflict rejection, ordered persistent values, JOIN/failure/TRY propagation, shared budgets and parent cancellation guards. Verification: twelve dedicated parallel regressions and concurrent native questions/notification ownership pass on API 29/36. **Correction verified within tested coverage; physical stress/lifecycle acceptance remains open.**
 
 ### AUD-022 — HIGH — End-of-stack cursor restarted after persisted response/wait
 
-Initial emulator checklist completion timed out on both API 29/36: nullable cursor was omitted by serialization and decoded as definition.entry, restarting the final question. Fix: encode explicit nulls, default a missing legacy cursor to null, and explicitly initialize Runtime.start at the entry. Verification: endOfGraphWaitAndResponsePreserveNullCursorAcrossSerialization and serialized parallel JOIN tests pass; native checklist regression awaits rerun.
+Initial emulator checklist completion timed out on both API 29/36: nullable cursor was omitted by serialization and decoded as definition.entry, restarting the final question. Fix: encode explicit nulls, default a missing legacy cursor to null, and explicitly initialize Runtime.start at the entry. Verification: null/legacy cursor and serialized JOIN JVM tests pass; native checklist completion/duplicate-response regression passes on API 29/36.
 
 ### AUD-023 — MEDIUM — Upsert silently ignored a duplicate secondary event key
 
-Initial emulator eventIdentityIsUnique showed Room upsert swallowing the insert conflict and updating a nonexistent primary key. Fix: new execution creation uses an aborting @Insert, while existing snapshots retain @Upsert. Verification: instrumentation regression now uses the same insertion path as Coordinator; rerun pending. Database uniqueness was present but silent conflict semantics were unsuitable for new-run creation.
+Initial emulator eventIdentityIsUnique showed Room upsert swallowing the insert conflict and updating a nonexistent primary key. Fix: new execution creation uses an aborting @Insert, while existing snapshots retain @Upsert. Verification: instrumentation uses the Coordinator insertion path and passes on API 29/36. Database uniqueness was present but silent conflict semantics were unsuitable for new-run creation.
 
 ### AUD-015 — MEDIUM — Unbounded persisted history
 
