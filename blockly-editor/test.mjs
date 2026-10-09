@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import Blockly from 'blockly/core';
 import * as En from 'blockly/msg/en';
 import {register,definitions,initialWorkspace} from './catalogue.js';
+import {backup} from './samples.mjs';
+import {setResources} from './catalogue.js';
 Blockly.setLocale(En);register(Blockly);
+test('all eight example scenarios retain fields, IDs and branches',()=>{
+ setResources({locations:backup.locations,workflows:backup.automations});
+ for(const automation of backup.automations){const a=new Blockly.Workspace();Blockly.serialization.workspaces.load(JSON.parse(automation.workspace),a);const saved=Blockly.serialization.workspaces.save(a);const b=new Blockly.Workspace();Blockly.serialization.workspaces.load(saved,b);assert.deepEqual(Blockly.serialization.workspaces.save(b),saved,automation.name);a.dispose();b.dispose();}
+});
 test('every custom block survives JSON serialization',()=>{
  for(const definition of definitions){const a=new Blockly.Workspace();const b=a.newBlock(definition.type);const state=Blockly.serialization.workspaces.save(a);const c=new Blockly.Workspace();Blockly.serialization.workspaces.load(state,c);assert.equal(c.getAllBlocks(false)[0].type,b.type);a.dispose();c.dispose();}
 });
