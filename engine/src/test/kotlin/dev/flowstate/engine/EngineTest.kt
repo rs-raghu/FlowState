@@ -30,7 +30,9 @@ class EngineTest {
                             "set",
                             fields = mapOf("NAME" to "count", "SCOPE" to "LOCAL"),
                             expressions =
-                                mapOf("VALUE" to Expr("add", args = listOf(literal(1), literal(2)))),
+                                mapOf(
+                                    "VALUE" to Expr("add", args = listOf(literal(1), literal(2)))
+                                ),
                         )
                     ),
             )

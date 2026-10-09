@@ -188,6 +188,7 @@ data class Execution(
     val trace: List<Trace> = emptyList(),
     val error: String? = null,
     val library: Map<String, Definition> = emptyMap(),
+    val deadline: Long? = null,
 )
 
 @Serializable

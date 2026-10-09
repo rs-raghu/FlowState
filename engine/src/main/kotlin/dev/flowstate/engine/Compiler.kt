@@ -13,6 +13,8 @@ object Compiler {
             "switch",
             "wait",
             "waitUntil",
+            "waitClock",
+            "setTimeout",
             "waitCondition",
             "repeat",
             "while",
@@ -301,6 +303,8 @@ object Compiler {
         val declarations = d.variables.associateBy { Expressions.key(it.scope, it.name, d.id) }
         if (declarations.size != d.variables.size) issue("Duplicate scoped variable")
         d.variables.forEach {
+            if (it.default.type != Type.NULL && it.default.type != it.type)
+                issue("Variable default must match its declared type")
             if (!it.name.matches(Regex("[A-Za-z][A-Za-z0-9_]{0,63}")))
                 issue(
                     "Variable names must start with a letter and contain only letters, numbers or underscores"
@@ -434,8 +438,19 @@ object Compiler {
                     (n.fields["LIMIT"]?.toIntOrNull() ?: 0) !in 1..d.maxIterations
             )
                 issue("Set loop limit between 1 and ${d.maxIterations}", n.id)
-            if (n.op == "wait" && (n.fields["SECONDS"]?.toLongOrNull() ?: 0) !in 1..31536000)
+            if (
+                n.op in setOf("wait", "setTimeout") &&
+                    (n.fields["SECONDS"]?.toLongOrNull() ?: 0) !in 1..31536000
+            )
                 issue("Wait must be 1 second to 1 year", n.id)
+            if (n.op == "waitClock")
+                try {
+                    LocalTime.parse(n.fields["TIME"] ?: "")
+                    val zone = n.fields["ZONE"] ?: "device"
+                    if (zone != "device") ZoneId.of(zone)
+                } catch (failure: Exception) {
+                    issue("Choose a valid clock time and timezone", n.id)
+                }
             if (n.op == "waitCondition" && (n.fields["SECONDS"]?.toLongOrNull() ?: 0) < 60)
                 issue("Condition checks require at least 60 seconds", n.id)
             if (
@@ -480,7 +495,7 @@ object Compiler {
             Scheduling.validate(d.trigger)
             if (d.trigger.kind == "location" && d.trigger.locationId !in locations)
                 issue("Select an existing location")
-        } catch (e: IllegalArgumentException) {
+        } catch (e: Exception) {
             issue(e.message ?: "Invalid trigger")
         }
         // Imported IR must be acyclic. Looping is represented only by guarded loop nodes and
@@ -501,6 +516,41 @@ object Compiler {
         }
         walk(d.entry, 0)
         if (visited.size != d.nodes.size) issue("Disconnected executable nodes")
+        val contexts = mutableSetOf<Pair<String, Int>>()
+        fun checkLoop(id: String?, loops: Int, depth: Int) {
+            if (id == null || depth > 128 || !contexts.add(id to loops)) return
+            val node = d.nodes.find { it.id == id } ?: return
+            if (node.op in setOf("break", "continue") && loops == 0)
+                issue("BREAK/CONTINUE must be inside a loop", id)
+            node.branches.forEach { (name, target) ->
+                checkLoop(
+                    target,
+                    loops + if (node.op in setOf("repeat", "while") && name == "DO") 1 else 0,
+                    depth + 1,
+                )
+            }
+            checkLoop(node.next, loops, depth + 1)
+        }
+        checkLoop(d.entry, 0, 0)
+        return errors
+    }
+
+    fun validateSharedVariables(definitions: Collection<Definition>): List<Issue> {
+        val variables = mutableMapOf<String, Type>()
+        val errors = mutableListOf<Issue>()
+        definitions.forEach { d ->
+            d.variables
+                .filter { it.scope == Scope.GLOBAL }
+                .forEach { v ->
+                    val old = variables.putIfAbsent(v.name, v.type)
+                    if (old != null && old != v.type)
+                        errors +=
+                            Issue(
+                                "GLOBAL_TYPE",
+                                "Global variable ${v.name} has incompatible declarations",
+                            )
+                }
+        }
         return errors
     }
 }

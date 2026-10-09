@@ -77,6 +77,9 @@ class Backups(private val db: FlowDatabase) {
                 a to Compiler.compile(a.workspace, a.id, 1, locations, workflows)
             }
         val definitions = compiled.associate { it.first.id to it.second }
+        val existing = dao.automations().map { codec.decodeFromString<Definition>(it.definition) }
+        val sharedIssues = Compiler.validateSharedVariables(existing + definitions.values)
+        if (sharedIssues.isNotEmpty()) throw ValidationException(sharedIssues)
         fun check(id: String, path: Set<String>) {
             require(id !in path) { "Recursive dependency in backup" }
             definitions[id]
@@ -102,6 +105,7 @@ class Backups(private val db: FlowDatabase) {
                 )
             }
             compiled.forEach { (a, d) ->
+                require(dao.automation(a.id) == null) { "Automation ID already exists" }
                 dao.saveAutomation(
                     AutomationEntity(
                         a.id,

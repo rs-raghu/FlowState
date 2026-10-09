@@ -133,7 +133,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             e.wakeAt,
         )
 
-    suspend fun saveInternal(id: String, name: String, source: String): AutomationEntity {
+    private suspend fun saveInternal(id: String, name: String, source: String): AutomationEntity {
         require(name.isNotBlank() && name.length <= 120)
         val locations = dao.locations().map { it.id }.toSet()
         val definitions = dao.automations()
@@ -152,6 +152,20 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                 .associate { it.id to codec.decodeFromString<Definition>(it.definition) }
                 .toMutableMap()
         all[id] = d
+        val sharedIssues = Compiler.validateSharedVariables(all.values)
+        if (sharedIssues.isNotEmpty()) throw ValidationException(sharedIssues)
+        val stored =
+            dao.variables().associate {
+                "${it.owner}:${it.name}" to codec.decodeFromString<Value>(it.value)
+            }
+        d.variables
+            .filter { it.scope != Scope.LOCAL }
+            .forEach { v ->
+                val value = stored[Expressions.key(v.scope, v.name, d.id)]
+                require(value == null || value.type == Type.NULL || value.type == v.type) {
+                    "Persistent variable ${v.name} already has a different type; use a new name"
+                }
+            }
         fun check(current: String, path: Set<String>) {
             require(current !in path) { "Recursive workflow dependency" }
             all[current]
@@ -177,9 +191,10 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         return value
     }
 
-    suspend fun enableInternal(a: AutomationEntity, value: Boolean) {
+    private suspend fun enableInternal(a: AutomationEntity, value: Boolean) {
+        val current = dao.automation(a.id) ?: return
         dao.saveAutomation(
-            a.copy(
+            current.copy(
                 enabled = value,
                 status = if (value) "Pending reconciliation" else "Disabled",
                 nextAt = null,
@@ -189,7 +204,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         reconcileInternal()
     }
 
-    suspend fun deleteInternal(id: String) {
+    private suspend fun deleteInternal(id: String) {
         require(
             dao.automations().none {
                 it.id != id &&
@@ -215,7 +230,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         reconcileInternal()
     }
 
-    suspend fun startInternal(
+    private suspend fun startInternal(
         id: String,
         event: String = UUID.randomUUID().toString(),
         automatic: Boolean = false,
@@ -242,7 +257,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         return execution
     }
 
-    suspend fun triggerInternal(id: String, key: String, at: Long, version: Int) {
+    private suspend fun triggerInternal(id: String, key: String, at: Long, version: Int) {
         val a = dao.automation(id) ?: return
         if (!a.enabled) return
         val t = codec.decodeFromString<Definition>(a.definition).trigger
@@ -254,7 +269,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         reconcileInternal()
     }
 
-    suspend fun driveInternal(id: String) {
+    private suspend fun driveInternal(id: String) {
         val rt = runtime()
         var latest: Execution? = null
         for (slice in 0 until 5) {
@@ -319,7 +334,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         }
     }
 
-    suspend fun respondInternal(id: String, token: String, response: String) {
+    private suspend fun respondInternal(id: String, token: String, response: String) {
         val rt = runtime()
         var accepted = false
         db.withTransaction {
@@ -337,7 +352,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         } else driveInternal(id) // Drives expiration without resurrecting stale responses.
     }
 
-    suspend fun cancelInternal(id: String) {
+    private suspend fun cancelInternal(id: String) {
         db.withTransaction {
             val row = dao.execution(id) ?: return@withTransaction
             val e = codec.decodeFromString<Execution>(row.snapshot)
@@ -354,7 +369,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         platform.cancelAllExecutionNotifications(id)
     }
 
-    suspend fun snoozeInternal(id: String, minutes: Long) {
+    private suspend fun snoozeInternal(id: String, minutes: Long) {
         require(minutes in 1..60)
         db.withTransaction {
             val row = dao.execution(id) ?: return@withTransaction
@@ -362,11 +377,12 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             val i = e.interaction ?: return@withTransaction
             require(i.snoozes < 3)
             require(i.deadline?.let { now < it } ?: true)
+            require(e.deadline?.let { now < it } ?: true)
             val at = now + minutes * 60000
             val changed =
                 e.copy(
                     interaction = i.copy(snoozes = i.snoozes + 1, snoozedUntil = at),
-                    wakeAt = minOf(at, i.deadline ?: Long.MAX_VALUE),
+                    wakeAt = minOf(at, i.deadline ?: Long.MAX_VALUE, e.deadline ?: Long.MAX_VALUE),
                 )
             dao.saveExecution(entity(changed, row.automationId, row.eventKey))
             dao.saveOutbox(
@@ -384,7 +400,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         platform.schedule("execution", id, e.wakeAt ?: return)
     }
 
-    suspend fun drainInternal() {
+    private suspend fun drainInternal() {
         dao.outbox().forEach { row ->
             val effect = codec.decodeFromString<Effect>(row.payload)
             val e =
@@ -412,7 +428,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         }
     }
 
-    suspend fun geofenceInternal(id: String, transition: String, at: Long) {
+    private suspend fun geofenceInternal(id: String, transition: String, at: Long) {
         var accepted = false
         db.withTransaction {
             val l = dao.location(id) ?: return@withTransaction
@@ -436,7 +452,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             }
     }
 
-    suspend fun reconcileInternal() {
+    private suspend fun reconcileInternal() {
         val device = ZoneId.systemDefault()
         val enabled = dao.automations().filter { it.enabled }
         enabled.forEach { a ->

@@ -12,13 +12,14 @@ All custom block identifiers have `fs_` prefixes. Every block has a stable Block
 | message/notifyCancel | Title/body; owned notification cancellation | Permission denial is recorded; workflow continues |
 | ask | Choice/yesno/text/number/confirm, title, choices, local response variable, bounds, timeout and branches | Invalid input remains pending; stale tokens ignored |
 | checklist | Required/optional items, completion/cancel/timeout branches | Required items must be completed; individual progress is persisted |
-| wait/waitUntil/waitCondition | Duration, timestamp or bounded condition polling | Condition polling minimum 60 s; excessive polls fail visibly |
+| wait/waitUntil/waitClock/waitCondition | Duration, timestamp, next local clock time with timezone, or bounded condition polling | Clock waits select tomorrow after today's time; DST follows schedule rules; polling minimum 60 s |
+| setTimeout | Persisted execution deadline from current time | Caps waits and expires the execution; late responses cannot bypass it |
 | repeat/while | Body and maximum iterations | Loop/step budgets fail safely |
-| break/continue | Exit/advance nearest loop frame | Use outside a loop fails visibly |
+| break/continue | Exit/advance nearest loop frame | Native validation rejects use outside a loop |
 | call/return | Saved workflow, named input/value, named local output; return expression | Missing/disabled target, type mismatch or recursion rejected/fails visibly |
 | try | Body and error handler | Unhandled failures set FAILED with diagnostic trace |
 | parallel | A then B, deterministic sequential branches | Shared variables; parent cancellation applies to the whole run |
-| stop/log/assert/breakpoint | End, private trace, Boolean assertion or marker | Failed assertions invoke handler or fail |
+| stop/log/assert/breakpoint | End, private trace, Boolean assertion or simulator pause | Breakpoints pause simulation after the marker; production records and continues |
 
 Expression operations: Boolean AND/OR/XOR/NOT; equality and ordered comparisons; range/empty/contains/prefix/suffix; arithmetic; concatenation/trim/case/length; list append/remove/item/join; explicit string/number conversion; current instant/date/time/weekday/month/weekend; overnight time windows, before/after; elapsed duration, timestamp addition/subtraction, formatting; fresh occupancy.
 

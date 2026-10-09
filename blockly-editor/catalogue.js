@@ -24,6 +24,8 @@ export const definitions=[
  block('switch','SWITCH value / case 1 / case 2 / first / second / default',[expr('VALUE'),text('CASE1','Class'),text('CASE2','Gym'),body('YES'),body('NO'),body('OTHER')],210),
  block('wait','WAIT seconds',[number('SECONDS',60,1)],55),
  block('waitUntil','WAIT UNTIL timestamp',[expr('VALUE','Instant')],55),
+ block('waitClock','WAIT UNTIL next clock time / timezone',[text('TIME','09:00'),text('ZONE','device')],55),
+ block('setTimeout','SET execution timeout seconds',[number('SECONDS',3600,1)],55),
  block('waitCondition','WAIT FOR condition / check seconds / max checks / then',[expr('TEST','Boolean'),number('SECONDS',60,60),number('LIMIT',60,1,1000),body('DO')],55),
  block('repeat','REPEAT bounded times / body',[number('LIMIT',3,1,1000),body('DO')],120),
  block('while','WHILE condition / max iterations / body',[expr('TEST','Boolean'),number('LIMIT',100,1,1000),body('DO')],120),
@@ -71,7 +73,7 @@ export function register(Blockly){
  }
 }
 export const toolbox={kind:'categoryToolbox',contents:[
- ['Triggers',40,['trigger']],['Logic',210,['if','switch','expr','value']],['Interactions',275,['ask','checklist','message','notifyCancel']],['Time & loops',55,['wait','waitUntil','waitCondition','repeat','while','break','continue']],['Variables',330,['variable','set','get','delete']],['Control',120,['call','return','try','parallel','stop']],['Debug',0,['log','assert','breakpoint']]
+ ['Triggers',40,['trigger']],['Logic',210,['if','switch','expr','value']],['Interactions',275,['ask','checklist','message','notifyCancel']],['Time & loops',55,['wait','waitUntil','waitClock','waitCondition','setTimeout','repeat','while','break','continue']],['Variables',330,['variable','set','get','delete']],['Control',120,['call','return','try','parallel','stop']],['Debug',0,['log','assert','breakpoint']]
 ].map(([name,colour,blocks])=>({kind:'category',name,colour:String(colour),contents:blocks.map(type=>({kind:'block',type:'fs_'+type}))}))};
 export function initialWorkspace(template='blank'){
  const trigger={type:'fs_trigger',id:crypto.randomUUID(),x:30,y:40,fields:{KIND:'manual'}};

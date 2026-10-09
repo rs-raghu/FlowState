@@ -39,6 +39,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         persistent: Map<String, Value> = emptyMap(),
         occupancy: Map<String, Pair<String, Long>> = emptyMap(),
         singleStep: Boolean = false,
+        simulationBreakpoints: Boolean = false,
     ): Tick {
         var e = original
         val values = persistent.toMutableMap()
@@ -76,6 +77,14 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
             else values[Expressions.key(scope, name, e.definition.id)] = value
         }
         if (e.state in terminal || e.state == State.PAUSED) return Tick(e, effects, values)
+        if (e.deadline?.let { now >= it } == true) {
+            record(e.cursor ?: "", "Execution deadline expired")
+            return Tick(
+                e.copy(state = State.EXPIRED, interaction = null, wakeAt = null),
+                listOf(Effect("${e.id}:deadline", "cancel", e.id)),
+                values,
+            )
+        }
         try {
             if (e.state == State.WAITING_FOR_USER) {
                 val interaction = requireNotNull(e.interaction)
@@ -236,6 +245,25 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                 state = if (at > now) State.WAITING_FOR_TIME else State.RUNNING,
                                 wakeAt = if (at > now) at else null,
                             )
+                    }
+                    "waitClock" -> {
+                        val time = java.time.LocalTime.parse(f("TIME", "09:00"))
+                        val selectedZone =
+                            java.time.ZoneId.of(
+                                f("ZONE", "device").let { if (it == "device") zone else it }
+                            )
+                        val date =
+                            java.time.Instant.ofEpochMilli(now).atZone(selectedZone).toLocalDate()
+                        val today = Scheduling.resolve(date, time, selectedZone)
+                        val at =
+                            if (today > now) today
+                            else Scheduling.resolve(date.plusDays(1), time, selectedZone)
+                        e = e.copy(cursor = n.next, state = State.WAITING_FOR_TIME, wakeAt = at)
+                    }
+                    "setTimeout" -> {
+                        val seconds = f("SECONDS", "3600").toLong()
+                        require(seconds in 1..31536000)
+                        e = e.copy(cursor = n.next, deadline = Math.addExact(now, seconds * 1000))
                     }
                     "waitCondition" -> {
                         if (evaluate(n, "TEST").boolean()) branch(n, "DO")
@@ -401,8 +429,9 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                     "breakpoint" ->
                         e =
                             e.copy(
-                                cursor = n.next
-                            ) // Simulator controls stepping; production trace marker.
+                                cursor = n.next,
+                                state = if (simulationBreakpoints) State.PAUSED else State.RUNNING,
+                            )
                     "stop" ->
                         e = e.copy(state = State.COMPLETED, cursor = null, frames = emptyList())
                     else -> error("Unsupported node ${n.op}")
@@ -434,6 +463,10 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         wakeAt = null,
                     )
         }
+        val deadline = e.deadline
+        val wakeAt = e.wakeAt
+        if (e.state !in terminal && deadline != null && (wakeAt == null || wakeAt > deadline))
+            e = e.copy(wakeAt = deadline)
         return Tick(e, effects, values)
     }
 
@@ -442,7 +475,8 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         if (
             e.state != State.WAITING_FOR_USER ||
                 token != i.token ||
-                i.deadline != null && now >= i.deadline
+                i.deadline != null && now >= i.deadline ||
+                e.deadline?.let { now >= it } == true
         )
             return e
         val n = e.definition.nodes.first { it.id == i.node }
