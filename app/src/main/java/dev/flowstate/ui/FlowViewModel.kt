@@ -56,7 +56,7 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
 
     fun rename(a: AutomationEntity, name: String) = work {
         require(name.isNotBlank() && name.length <= 120)
-        dao.renameAutomation(a.id, name, System.currentTimeMillis())
+        application.coordinator.rename(a.id, name)
     }
 
     fun cancel(id: String) = work { application.coordinator.cancel(id) }

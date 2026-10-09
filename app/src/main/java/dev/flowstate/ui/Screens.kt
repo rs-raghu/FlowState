@@ -566,6 +566,7 @@ private fun Activity(
     onExpand: (String?) -> Unit,
 ) {
     var simulation by remember { mutableStateOf<Definition?>(null) }
+    var simulationLibrary by remember { mutableStateOf<List<Definition>>(emptyList()) }
     Content {
         Title("Activity", "Respond to questions and inspect execution history.")
         rows.forEach { row ->
@@ -584,7 +585,14 @@ private fun Activity(
                     TextButton(onClick = { onExpand(if (expanded == row.id) null else row.id) }) {
                         Text("Trace")
                     }
-                    TextButton(onClick = { simulation = e.definition }) { Text("Debug") }
+                    TextButton(
+                        onClick = {
+                            simulation = e.definition
+                            simulationLibrary = e.library.values.toList()
+                        }
+                    ) {
+                        Text("Debug")
+                    }
                     if (e.state !in Runtime.terminal)
                         TextButton(onClick = { vm.cancel(row.id) }) { Text("Cancel run") }
                 }
@@ -598,7 +606,7 @@ private fun Activity(
         }
         if (rows.isEmpty()) Text("No executions yet. Run an automation manually to test it.")
         simulation?.let { d ->
-            Simulator(d, automations.map { codec.decodeFromString<Definition>(it.definition) })
+            Simulator(d, simulationLibrary)
         }
     }
 }

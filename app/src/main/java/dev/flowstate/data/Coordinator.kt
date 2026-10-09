@@ -26,6 +26,11 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
 
     suspend fun delete(id: String) = operations.withLock { deleteInternal(id) }
 
+    suspend fun rename(id: String, name: String) = operations.withLock {
+        require(name.isNotBlank() && name.length <= 120)
+        dao.renameAutomation(id, name, now)
+    }
+
     suspend fun start(
         id: String,
         event: String = UUID.randomUUID().toString(),
@@ -152,20 +157,19 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                 .associate { it.id to codec.decodeFromString<Definition>(it.definition) }
                 .toMutableMap()
         all[id] = d
-        val sharedIssues = Compiler.validateSharedVariables(all.values)
+        val activeDefinitions =
+            dao.active().flatMap { row ->
+                val execution = codec.decodeFromString<Execution>(row.snapshot)
+                listOf(execution.definition) + execution.library.values
+            }
+        val sharedIssues = Compiler.validateSharedVariables(all.values + activeDefinitions)
         if (sharedIssues.isNotEmpty()) throw ValidationException(sharedIssues)
         val stored =
             dao.variables().associate {
                 "${it.owner}:${it.name}" to codec.decodeFromString<Value>(it.value)
             }
-        d.variables
-            .filter { it.scope != Scope.LOCAL }
-            .forEach { v ->
-                val value = stored[Expressions.key(v.scope, v.name, d.id)]
-                require(value == null || value.type == Type.NULL || value.type == v.type) {
-                    "Persistent variable ${v.name} already has a different type; use a new name"
-                }
-            }
+        val valueIssues = Compiler.validatePersistentValues(listOf(d), stored)
+        if (valueIssues.isNotEmpty()) throw ValidationException(valueIssues)
         fun check(current: String, path: Set<String>) {
             require(current !in path) { "Recursive workflow dependency" }
             all[current]

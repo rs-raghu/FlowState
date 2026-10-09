@@ -503,6 +503,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         else
                             Value.string(response).also {
                                 require(it.text.length >= (n.fields["MIN"]?.toIntOrNull() ?: 0))
+                                require(it.text.length <= (n.fields["MAX"]?.toIntOrNull() ?: 16384))
                             }
                     require(i.scope == Scope.LOCAL) {
                         "Response variables must be local; use SET for persistent values"

@@ -8,6 +8,75 @@ import org.junit.Test
 
 class ControlTest {
     @Test
+    fun textBoundsAndResponseVariableAreValidatedBeforeAndAfterWaiting() {
+        val q =
+            Node(
+                "q",
+                "ask",
+                fields = mapOf("KIND" to "text", "NAME" to "answer", "MIN" to "2", "MAX" to "4"),
+            )
+        val d =
+            Definition(
+                id = "a",
+                entry = "q",
+                variables = listOf(Variable("answer", Type.STRING, Scope.LOCAL)),
+                nodes = listOf(q),
+            )
+        assertTrue(Compiler.validate(d).isEmpty())
+        assertTrue(Compiler.validate(d.copy(variables = emptyList())).isNotEmpty())
+        assertTrue(
+            Compiler.validate(d.copy(nodes = listOf(q.copy(fields = q.fields + ("MAX" to "1")))))
+                .isNotEmpty()
+        )
+        val runtime = Runtime()
+        val e = runtime.tick(runtime.start("text", d, 0), 0, "UTC").execution
+        val token = requireNotNull(e.interaction).token
+        assertFails { runtime.respond(e, token, "12345", 1) }
+        assertFails { runtime.respond(e, token, "1", 1) }
+        assertEquals(Value.string("123"), runtime.respond(e, token, "123", 1).locals["answer"])
+    }
+
+    @Test
+    fun orphanPersistentValuesAndSuspendedVersionTypesAreProtected() {
+        val d =
+            Definition(
+                id = "a",
+                entry = null,
+                nodes = emptyList(),
+                variables =
+                    listOf(
+                        Variable("shared", Type.INTEGER, Scope.GLOBAL),
+                        Variable("owned", Type.INTEGER, Scope.AUTOMATION),
+                    ),
+            )
+        assertEquals(
+            2,
+            Compiler.validatePersistentValues(
+                    listOf(d),
+                    mapOf("global:shared" to Value.string("old"), "a:owned" to Value.bool(true)),
+                )
+                .size,
+        )
+        assertTrue(
+            Compiler.validatePersistentValues(listOf(d), mapOf("global:shared" to Value.NULL))
+                .isEmpty()
+        )
+        val edited =
+            d.copy(
+                version = 2,
+                variables =
+                    listOf(
+                        Variable("shared", Type.INTEGER, Scope.GLOBAL),
+                        Variable("owned", Type.STRING, Scope.AUTOMATION),
+                    ),
+            )
+        assertEquals(
+            "AUTOMATION_TYPE",
+            Compiler.validateSharedVariables(listOf(d, edited)).single().code,
+        )
+    }
+
+    @Test
     fun locationOvernightWindowUsesItsStartingDayAndDate() {
         val t =
             Trigger(

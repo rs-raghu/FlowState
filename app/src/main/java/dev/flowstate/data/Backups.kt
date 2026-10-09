@@ -78,8 +78,19 @@ class Backups(private val db: FlowDatabase) {
             }
         val definitions = compiled.associate { it.first.id to it.second }
         val existing = dao.automations().map { codec.decodeFromString<Definition>(it.definition) }
-        val sharedIssues = Compiler.validateSharedVariables(existing + definitions.values)
+        val active =
+            dao.active().flatMap { row ->
+                val execution = codec.decodeFromString<Execution>(row.snapshot)
+                listOf(execution.definition) + execution.library.values
+            }
+        val sharedIssues = Compiler.validateSharedVariables(existing + active + definitions.values)
         if (sharedIssues.isNotEmpty()) throw ValidationException(sharedIssues)
+        val stored =
+            dao.variables().associate {
+                "${it.owner}:${it.name}" to codec.decodeFromString<Value>(it.value)
+            }
+        val valueIssues = Compiler.validatePersistentValues(definitions.values, stored)
+        if (valueIssues.isNotEmpty()) throw ValidationException(valueIssues)
         fun check(id: String, path: Set<String>) {
             require(id !in path) { "Recursive dependency in backup" }
             definitions[id]

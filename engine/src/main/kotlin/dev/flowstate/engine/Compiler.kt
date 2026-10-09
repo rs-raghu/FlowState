@@ -463,7 +463,7 @@ object Compiler {
             if (
                 n.op == "ask" &&
                     n.fields["KIND"] in setOf("text", "number") &&
-                    n.fields["SCOPE"] != "LOCAL"
+                    (n.fields["SCOPE"] ?: "LOCAL") != "LOCAL"
             )
                 issue("Store responses locally, then SET persistent values", n.id)
             if (n.op in setOf("ask", "checklist")) {
@@ -479,6 +479,48 @@ object Compiler {
                     issue("Provide 1–100 distinct options/items", n.id)
                 if (((n.fields["TIMEOUT"] ?: "900").toLongOrNull() ?: -1L) !in 0L..31536000L)
                     issue("Invalid interaction timeout", n.id)
+                if (n.op == "ask") {
+                    val kind = n.fields["KIND"] ?: "choice"
+                    if (kind !in setOf("choice", "yesno", "confirm", "text", "number"))
+                        issue("Unsupported question kind", n.id)
+                    val responseName = n.fields["NAME"].orEmpty()
+                    if (responseName.isNotBlank()) {
+                        val v = declarations[responseName]
+                        val expected = if (kind == "number") Type.DECIMAL else Type.STRING
+                        if (
+                            v?.scope != Scope.LOCAL ||
+                                v.type != expected ||
+                                (n.fields["SCOPE"] ?: "LOCAL") != "LOCAL"
+                        )
+                            issue("Response requires a declared local $expected variable", n.id)
+                    }
+                    if (kind == "text") {
+                        val min = n.fields["MIN"].orEmpty().ifEmpty { "0" }.toIntOrNull()
+                        val max = n.fields["MAX"].orEmpty().ifEmpty { "16384" }.toIntOrNull()
+                        if (min == null || max == null || min !in 0..16384 || max !in min..16384)
+                            issue("Text bounds must be between 0 and 16384, min <= max", n.id)
+                    }
+                    if (kind == "number") {
+                        val min =
+                            n.fields["MIN"]
+                                .orEmpty()
+                                .ifEmpty { (-Double.MAX_VALUE).toString() }
+                                .toDoubleOrNull()
+                        val max =
+                            n.fields["MAX"]
+                                .orEmpty()
+                                .ifEmpty { Double.MAX_VALUE.toString() }
+                                .toDoubleOrNull()
+                        if (
+                            min == null ||
+                                max == null ||
+                                !min.isFinite() ||
+                                !max.isFinite() ||
+                                min > max
+                        )
+                            issue("Choose finite numeric bounds with min <= max", n.id)
+                    }
+                }
             }
             if (n.op == "set") {
                 val v =
@@ -542,17 +584,34 @@ object Compiler {
         val errors = mutableListOf<Issue>()
         definitions.forEach { d ->
             d.variables
-                .filter { it.scope == Scope.GLOBAL }
+                .filter { it.scope != Scope.LOCAL }
                 .forEach { v ->
-                    val old = variables.putIfAbsent(v.name, v.type)
+                    val old = variables.putIfAbsent(Expressions.key(v.scope, v.name, d.id), v.type)
                     if (old != null && old != v.type)
                         errors +=
                             Issue(
-                                "GLOBAL_TYPE",
-                                "Global variable ${v.name} has incompatible declarations",
+                                if (v.scope == Scope.GLOBAL) "GLOBAL_TYPE" else "AUTOMATION_TYPE",
+                                "Persistent variable ${v.name} has incompatible declarations",
                             )
                 }
         }
         return errors
+    }
+
+    fun validatePersistentValues(
+        definitions: Collection<Definition>,
+        values: Map<String, Value>,
+    ): List<Issue> = definitions.flatMap { d ->
+        d.variables
+            .filter { it.scope != Scope.LOCAL }
+            .mapNotNull { v ->
+                val stored = values[Expressions.key(v.scope, v.name, d.id)]
+                if (stored != null && stored.type != Type.NULL && stored.type != v.type)
+                    Issue(
+                        "PERSISTENT_TYPE",
+                        "Persistent variable ${v.name} already has a different type; use a new name",
+                    )
+                else null
+            }
     }
 }
