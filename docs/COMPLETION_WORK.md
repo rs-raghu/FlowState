@@ -48,3 +48,7 @@ Verification: 65 core tests and six editor tests pass. Debug assembly, lint (zer
 ## Final user checks
 
 Actual phone geofence entry/exit/dwell, permission and location-service changes, reboot delivery, OEM power restrictions and prolonged battery behavior. Signing with a personal private release key remains the owner's credential-dependent step.
+
+## Emulator startup repair
+
+Hosted Android 10 and 16 each passed 21 of 23 native tests. The editor initialized its JavaScript object but the native workspace handshake did not complete during the test; startup now has an idempotent trusted-page callback and immediate main dispatcher. Notification denial tests revoke the runtime permission on modern Android and set both package/UID app ops on Android 10. Android 17 requires a larger emulator data partition; CI allocates 8 GB. Native test compilation passes; execution awaits the next hosted run.

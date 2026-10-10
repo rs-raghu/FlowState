@@ -39,7 +39,12 @@ class PlatformNativeTest {
         try {
             if (Build.VERSION.SDK_INT >= 33)
                 shell("pm grant dev.flowstate android.permission.POST_NOTIFICATIONS")
-            shell("cmd appops set dev.flowstate POST_NOTIFICATION ignore")
+            if (Build.VERSION.SDK_INT >= 33)
+                shell("pm revoke dev.flowstate android.permission.POST_NOTIFICATIONS")
+            else {
+                shell("cmd appops set --uid dev.flowstate POST_NOTIFICATION ignore")
+                shell("cmd appops set dev.flowstate POST_NOTIFICATION ignore")
+            }
             awaitState("Notification denial applied") { !platform.notificationsAllowed() }
             val source =
                 """{"blocks":{"blocks":[{"type":"fs_trigger","id":"trigger","fields":{"KIND":"manual"},"next":{"block":{"type":"fs_ask","id":"ask","fields":{"KIND":"yesno","TITLE":"Permission recovery question","TIMEOUT":0}}}}]}}"""
@@ -54,6 +59,9 @@ class PlatformNativeTest {
                     it.message.contains("permission denied")
                 }
             )
+            if (Build.VERSION.SDK_INT >= 33)
+                shell("pm grant dev.flowstate android.permission.POST_NOTIFICATIONS")
+            shell("cmd appops set --uid dev.flowstate POST_NOTIFICATION allow")
             shell("cmd appops set dev.flowstate POST_NOTIFICATION allow")
             awaitState("Notifications restored") { platform.notificationsAllowed() }
             app.coordinator.reconcile()
@@ -74,6 +82,9 @@ class PlatformNativeTest {
                     .dismissed
             )
         } finally {
+            if (Build.VERSION.SDK_INT >= 33)
+                shell("pm grant dev.flowstate android.permission.POST_NOTIFICATIONS")
+            shell("cmd appops set --uid dev.flowstate POST_NOTIFICATION allow")
             shell("cmd appops set dev.flowstate POST_NOTIFICATION allow")
             app.coordinator.delete(id)
         }

@@ -64,26 +64,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                             return true
                         }
                     }
-                webViewClient =
-                    object : WebViewClient() {
-                        override fun shouldInterceptRequest(
-                            v: WebView,
-                            request: WebResourceRequest,
-                        ): WebResourceResponse =
-                            loader.shouldInterceptRequest(request.url)
-                                ?: WebResourceResponse(
-                                    "text/plain",
-                                    "UTF-8",
-                                    ByteArrayInputStream(ByteArray(0)),
-                                )
-
-                        override fun shouldOverrideUrlLoading(
-                            v: WebView,
-                            request: WebResourceRequest,
-                        ) =
-                            request.url.toString() !=
-                                "https://appassets.androidplatform.net/assets/editor/index.html"
-                    }
+                var editorInitialized = false
                 fun receiveEditorMessage(data: String) {
                     if (data.length > 2_000_000) {
                         vm.message.value = "Editor message exceeds 2 MB"
@@ -100,11 +81,13 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                         vm.message.value = e.message
                         return
                     }
-                    scope.launch {
+                    scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
                         try {
                             val payload = codec.parseToJsonElement(SafeInput.json(data)).jsonObject
                             when (payload["action"]?.jsonPrimitive?.content) {
                                 "ready" -> {
+                                    if (editorInitialized) return@launch
+                                    editorInitialized = true
                                     fun resources(items: List<Pair<String, String>>) =
                                         buildJsonArray {
                                             items.forEach { (id, name) ->
@@ -221,6 +204,34 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                         }
                     }
                 }
+                webViewClient =
+                    object : WebViewClient() {
+                        override fun onPageFinished(v: WebView, url: String) {
+                            if (
+                                url ==
+                                    "https://appassets.androidplatform.net/assets/editor/index.html"
+                            )
+                                receiveEditorMessage("{\"action\":\"ready\"}")
+                        }
+
+                        override fun shouldInterceptRequest(
+                            v: WebView,
+                            request: WebResourceRequest,
+                        ): WebResourceResponse =
+                            loader.shouldInterceptRequest(request.url)
+                                ?: WebResourceResponse(
+                                    "text/plain",
+                                    "UTF-8",
+                                    ByteArrayInputStream(ByteArray(0)),
+                                )
+
+                        override fun shouldOverrideUrlLoading(
+                            v: WebView,
+                            request: WebResourceRequest,
+                        ) =
+                            request.url.toString() !=
+                                "https://appassets.androidplatform.net/assets/editor/index.html"
+                    }
                 if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
                     WebViewCompat.addWebMessageListener(
                         this,
