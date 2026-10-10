@@ -16,6 +16,21 @@ import org.junit.Test
 class ReminderNativeTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
+    private fun awaitCount(manager: NotificationManager, id: String, expected: Int) {
+        for (attempt in 0 until 100) {
+            if (
+                manager.activeNotifications.count { it.tag?.startsWith("$id:message:") == true } ==
+                    expected
+            )
+                return
+            Thread.sleep(50)
+        }
+        assertEquals(
+            expected,
+            manager.activeNotifications.count { it.tag?.startsWith("$id:message:") == true },
+        )
+    }
+
     @Test
     fun namedNotificationUpdateAndCancellationStayOwned() {
         val p = Platform(context)
@@ -37,6 +52,7 @@ class ReminderNativeTest {
                     id,
                     Effect("3", "message", "Second", notification = config.copy(target = "second")),
                 )
+                awaitCount(manager, id, 2)
                 assertEquals(
                     2,
                     manager.activeNotifications.count {
@@ -44,6 +60,7 @@ class ReminderNativeTest {
                     },
                 )
                 p.notification(id, Effect("4", "cancelOwned", "", notification = config))
+                awaitCount(manager, id, 1)
                 assertEquals(
                     1,
                     manager.activeNotifications.count {

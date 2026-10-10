@@ -8,60 +8,68 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.flowstate.engine.*
-import dev.flowstate.engine.State
 import java.time.*
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun Simulator(d: Definition, definitions: List<Definition>, onHighlight: (String) -> Unit = {}) {
-    val runtime = remember(d) { Runtime { id -> definitions.find { it.id == id } } }
-    var clock by remember { mutableStateOf(Instant.now().toString()) }
-    var zone by remember { mutableStateOf(ZoneId.systemDefault().id) }
-    var e by
-        remember(d) { mutableStateOf(runtime.start("simulation", d, Instant.now().toEpochMilli())) }
-    var values by remember { mutableStateOf<Map<String, Value>>(emptyMap()) }
-    var effects by remember { mutableStateOf<List<Effect>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var response by remember { mutableStateOf("") }
-    var pausedState by remember { mutableStateOf<State?>(null) }
-    var occupancy by remember { mutableStateOf<Map<String, Pair<String, Long>>>(emptyMap()) }
-    var mockLocation by remember { mutableStateOf(d.trigger.locationId) }
-    var mockValue by remember { mutableStateOf("") }
-    var mockVariable by remember { mutableStateOf("") }
-    var notificationAllowed by remember { mutableStateOf(true) }
-    fun step(single: Boolean) {
-        try {
-            val now = Instant.parse(clock).toEpochMilli()
-            if (e.state == State.PAUSED) {
-                e = e.copy(state = pausedState ?: State.RUNNING).resumePausedBranches()
-                pausedState = null
-            }
-            val tick =
-                runtime.tick(
-                    e,
-                    now,
-                    zone,
-                    values,
-                    occupancy,
-                    singleStep = single,
-                    simulationBreakpoints = true,
-                )
-            e = tick.execution
-            values = tick.persistent
-            effects = (effects + tick.effects).takeLast(100)
-            onHighlight(e.trace.lastOrNull()?.node ?: "")
-        } catch (ex: Exception) {
-            error = ex.message
+fun Simulator(
+    d: Definition,
+    definitions: List<Definition>,
+    onHighlight: (String) -> Unit = {},
+    initial: Execution? = null,
+) {
+    val simulation =
+        remember(d, initial?.id) {
+            Simulation(
+                d,
+                definitions,
+                initial?.started ?: System.currentTimeMillis(),
+                ZoneId.systemDefault().id,
+                initial,
+            )
         }
+    var revision by remember { mutableIntStateOf(0) }
+    var clock by remember { mutableStateOf(Instant.ofEpochMilli(simulation.now).toString()) }
+    var zone by remember { mutableStateOf(simulation.zone) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var location by remember { mutableStateOf(d.trigger.locationId) }
+    var variable by remember { mutableStateOf("") }
+    var variableValue by remember { mutableStateOf("") }
+    var variableScope by remember { mutableStateOf(Scope.LOCAL) }
+    var response by remember { mutableStateOf("") }
+    var breakpoints by remember { mutableStateOf("") }
+    var events by remember { mutableStateOf("") }
+    fun action(block: () -> Unit) {
+        try {
+            error = null
+            simulation.now = Instant.parse(clock).toEpochMilli()
+            ZoneId.of(zone)
+            simulation.zone = zone
+            simulation.breakpoints =
+                breakpoints.split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+            block()
+            clock = Instant.ofEpochMilli(simulation.now).toString()
+            zone = simulation.zone
+            onHighlight(
+                simulation.execution.cursor ?: simulation.execution.trace.lastOrNull()?.node ?: ""
+            )
+        } catch (e: Exception) {
+            error = e.message
+        }
+        revision++
     }
+    val e = remember(revision) { simulation.execution }
     Column(
         Modifier.fillMaxWidth()
-            .heightIn(max = 620.dp)
+            .heightIn(max = 680.dp)
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("Workflow simulator", style = MaterialTheme.typography.headlineSmall)
-        Text("Clock, effects and variable writes stay inside this simulation.")
+        Text(
+            "All clocks, events, effects and variable writes remain in memory. ${if(initial!=null) "Opened the captured execution snapshot." else "Started a fresh simulation."}"
+        )
         OutlinedTextField(
             clock,
             { clock = it },
@@ -74,194 +82,179 @@ fun Simulator(d: Definition, definitions: List<Definition>, onHighlight: (String
             label = { Text("Timezone") },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { step(true) }) { Text("Step") }
-            Button(
+        FlowRow {
+            TextButton(
                 onClick = {
-                    for (slice in 0 until 100) {
-                        if (
-                            slice > 0 &&
-                                e.state !in setOf(State.CREATED, State.QUEUED, State.RUNNING)
-                        )
-                            break
-                        step(false)
+                    action {
+                        simulation.resume()
+                        simulation.step()
                     }
                 }
             ) {
-                Text("Run")
+                Text("Step into")
             }
-            TextButton(
-                onClick = {
-                    e = runtime.start("simulation", d, Instant.parse(clock).toEpochMilli())
-                    values = emptyMap()
-                    effects = emptyList()
-                    pausedState = null
-                }
-            ) {
-                Text("Restart")
-            }
+            TextButton(onClick = { action { simulation.stepOver() } }) { Text("Step over") }
+            TextButton(onClick = { action { simulation.stepOut() } }) { Text("Step out") }
+            TextButton(onClick = { action { simulation.run() } }) { Text("Run / continue") }
+            TextButton(onClick = { action { simulation.pause() } }) { Text("Pause") }
+            TextButton(onClick = { action { simulation.stop() } }) { Text("Stop") }
+            TextButton(onClick = { action { simulation.restart() } }) { Text("Restart") }
         }
-        Row {
-            TextButton(
-                onClick = {
-                    if (e.state !in Runtime.terminal && e.state != State.PAUSED) {
-                        pausedState = e.state
-                        e = e.copy(state = State.PAUSED)
-                    }
-                }
-            ) {
-                Text("Pause")
-            }
-            TextButton(
-                onClick = {
-                    if (e.state == State.PAUSED) {
-                        e = e.copy(state = pausedState ?: State.RUNNING).resumePausedBranches()
-                        pausedState = null
-                    }
-                }
-            ) {
-                Text("Continue")
-            }
-            TextButton(onClick = { e = e.copy(state = State.CANCELLED) }) { Text("Stop") }
-        }
-        Text("${e.state} · node ${e.cursor ?: "end"} · ${e.steps} steps")
-        Text("Mock location")
         OutlinedTextField(
-            mockLocation,
-            { mockLocation = it },
-            label = { Text("Saved location ID") },
+            breakpoints,
+            { breakpoints = it },
+            label = { Text("Breakpoint node IDs, separated by commas") },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row {
-            listOf("INSIDE", "OUTSIDE", "UNKNOWN").forEach { status ->
+        Text(
+            "${e.state} · current ${e.cursor ?: "end"} · previous ${e.trace.lastOrNull()?.node ?: "none"} · ${e.steps} steps"
+        )
+        OutlinedTextField(
+            location,
+            { location = it },
+            label = { Text("Simulated location ID") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        FlowRow {
+            listOf("enter", "exit", "dwell").forEach { kind ->
                 TextButton(
-                    onClick = {
-                        try {
-                            occupancy =
-                                occupancy +
-                                    (mockLocation to
-                                        (status to Instant.parse(clock).toEpochMilli()))
-                        } catch (ex: Exception) {
-                            error = ex.message
-                        }
-                    }
+                    onClick = { action { simulation.event(simulation.now, kind, location) } }
                 ) {
-                    Text(status)
+                    Text(kind)
                 }
             }
         }
-        Text("Occupancy: ${occupancy.mapValues { it.value.first }}")
-        Text("Mock variable (declared name)")
+        Text("Occupancy: ${simulation.occupancy.mapValues {it.value.first}}")
+        Text("Simulated permissions", style = MaterialTheme.typography.titleMedium)
+        simulation.permissions.forEach { (name, allowed) ->
+            Row {
+                Checkbox(
+                    allowed,
+                    { action { simulation.permissions = simulation.permissions + (name to it) } },
+                )
+                Text(name)
+            }
+        }
         OutlinedTextField(
-            mockVariable,
-            { mockVariable = it },
-            label = { Text("Variable name") },
+            variable,
+            { variable = it },
+            label = { Text("Declared variable name") },
             modifier = Modifier.fillMaxWidth(),
         )
+        FlowRow {
+            Scope.entries.forEach { scope ->
+                FilterChip(
+                    selected = variableScope == scope,
+                    onClick = { variableScope = scope },
+                    label = { Text(scope.name) },
+                )
+            }
+        }
         OutlinedTextField(
-            mockValue,
-            { mockValue = it },
+            variableValue,
+            { variableValue = it },
             label = { Text("Value; instant ISO / duration seconds / list |") },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row {
-            Scope.entries.forEach { scope ->
-                TextButton(
-                    onClick = {
-                        try {
-                            val declaration =
-                                e.definition.variables.single {
-                                    it.name == mockVariable && it.scope == scope
-                                }
-                            val value = Value.parse(declaration.type, mockValue)
-                            if (scope == Scope.LOCAL)
-                                e = e.copy(locals = e.locals + (mockVariable to value))
-                            else
-                                values =
-                                    values +
-                                        (Expressions.key(scope, mockVariable, e.definition.id) to
-                                            value)
-                        } catch (ex: Exception) {
-                            error = ex.message
-                        }
-                    }
-                ) {
-                    Text(scope.name)
-                }
-            }
-        }
-        Row {
-            Checkbox(notificationAllowed, { notificationAllowed = it })
-            Text("Mock notification permission")
+        TextButton(
+            onClick = { action { simulation.variable(variable, variableScope, variableValue) } }
+        ) {
+            Text("Set simulated value")
         }
         TextButton(
             onClick = {
-                try {
-                    val now = Instant.parse(clock).toEpochMilli()
-                    val schedule = Scheduling.next(d.trigger, now, ZoneId.of(zone))
+                action {
+                    val next = Scheduling.next(d.trigger, simulation.now, ZoneId.of(zone))
                     error =
-                        if (schedule == null)
-                            "No scheduled occurrence (manual/location trigger or ended schedule)"
-                        else "Would schedule ${Instant.ofEpochMilli(schedule.at)} · ${schedule.key}"
-                } catch (ex: Exception) {
-                    error = ex.message
+                        "Next trigger: ${next?.let {Instant.ofEpochMilli(it.at).toString()+" · "+it.key} ?: "none"}"
                 }
             }
         ) {
             Text("Inspect next trigger")
         }
-        e.wakeAt?.let {
-            Text("Wait until ${Instant.ofEpochMilli(it)}")
+        e.wakeAt?.let { wake ->
+            Text("Wait until ${Instant.ofEpochMilli(wake)}")
             TextButton(
                 onClick = {
-                    clock = Instant.ofEpochMilli(it).toString()
-                    step(false)
+                    clock = Instant.ofEpochMilli(wake).toString()
+                    action { simulation.run() }
                 }
             ) {
                 Text("Advance to wake time")
             }
         }
         e.pendingInteractions().forEach { i ->
-            Text(i.title)
+            Text(i.title, style = MaterialTheme.typography.titleMedium)
             Text("${i.kind}: ${i.options.joinToString(" | ")}")
             OutlinedTextField(
                 response,
                 { response = it },
                 label = {
-                    Text(if (i.kind == "checklist") "Checked item indices: 0,1,…" else "Response")
+                    Text(if (i.kind == "checklist") "Checked item indices: 0,1" else "Response")
                 },
+                modifier = Modifier.fillMaxWidth(),
             )
-            Button(
-                onClick = {
-                    try {
-                        e =
-                            runtime.respond(
-                                e,
-                                i.token,
-                                response,
-                                Instant.parse(clock).toEpochMilli(),
-                            )
-                        step(false)
-                    } catch (ex: Exception) {
-                        error = ex.message
-                    }
-                }
-            ) {
+            TextButton(onClick = { action { simulation.respond(i.token, response) } }) {
                 Text("Respond")
             }
         }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        e.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Text(
-            "Variables: ${e.locals.mapValues { it.value.display() }} · persistent: ${values.mapValues { it.value.display() }}"
+        OutlinedTextField(
+            events,
+            { events = it },
+            label = {
+                Text("Event stream: ISO instant|enter/exit/dwell/response/clock/notification|value")
+            },
+            modifier = Modifier.fillMaxWidth(),
         )
-        effects.forEach {
+        TextButton(
+            onClick = {
+                action {
+                    val lines = events.lines().filter { it.isNotBlank() }
+                    require(lines.size <= 100 && events.length <= 16384)
+                    lines.forEach {
+                        val parts = it.split('|', limit = 3)
+                        require(parts.size == 3)
+                        simulation.event(
+                            Instant.parse(parts[0].trim()).toEpochMilli(),
+                            parts[1].trim(),
+                            parts[2],
+                        )
+                    }
+                }
+            }
+        ) {
+            Text("Replay event stream")
+        }
+        Text(simulation.explanation)
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        ExecutionInspector(e)
+        Text("Persistent values: ${simulation.values.mapValues {it.value.display()}}")
+        simulation.effects.forEach { effect ->
             Text(
-                "${if(notificationAllowed || it.kind == "cancel") "Would" else "Permission would block"} ${it.kind}: ${it.title} ${it.body}"
+                "${if(simulation.permissions["notifications"]==true) "Would display" else "Permission would suppress"} ${effect.kind}: ${effect.title} ${effect.body}"
             )
         }
-        e.trace.takeLast(30).forEach {
-            Text("${it.node}: ${it.detail}", style = MaterialTheme.typography.bodySmall)
+        Text("Recorded simulation states", style = MaterialTheme.typography.titleMedium)
+        simulation.history.takeLast(20).forEachIndexed { index, s ->
+            val position = simulation.history.size - simulation.history.takeLast(20).size + index
+            TextButton(onClick = { action { simulation.replay(position) } }) {
+                Text(
+                    "Replay ${s.execution.steps} steps · ${s.execution.state} · ${Instant.ofEpochMilli(s.now)}"
+                )
+            }
         }
+    }
+}
+
+@Composable
+fun ExecutionInspector(e: Execution) {
+    Text("${e.definition.id} v${e.definition.version}: ${e.state}")
+    Text("Locals: ${e.locals.mapValues {it.value.display()}}")
+    e.trace.takeLast(30).forEach {
+        Text("${it.node}: ${it.detail}", style = MaterialTheme.typography.bodySmall)
+    }
+    e.branches.forEachIndexed { index, child ->
+        Text("Branch ${index+1}", style = MaterialTheme.typography.titleMedium)
+        ExecutionInspector(child)
     }
 }

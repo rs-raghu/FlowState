@@ -4,6 +4,7 @@ import androidx.room.*
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
 
 @Entity(tableName = "automations")
 data class AutomationEntity(
@@ -48,6 +49,7 @@ data class LocationEntity(
             )
         ],
 )
+@Serializable
 data class ExecutionEntity(
     @PrimaryKey val id: String,
     val automationId: String,
@@ -59,6 +61,7 @@ data class ExecutionEntity(
 )
 
 @Entity(tableName = "variables", primaryKeys = ["owner", "name"])
+@Serializable
 data class VariableEntity(val owner: String, val name: String, val value: String)
 
 @Entity(
@@ -77,6 +80,7 @@ data class VariableEntity(val owner: String, val name: String, val value: String
 data class OutboxEntity(@PrimaryKey val id: String, val executionId: String, val payload: String)
 
 @Entity(tableName = "diagnostics")
+@Serializable
 data class DiagnosticEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val at: Long,
@@ -84,6 +88,7 @@ data class DiagnosticEntity(
 )
 
 @Entity(tableName = "event_ledger")
+@Serializable
 data class EventEntity(
     @PrimaryKey val key: String,
     val automationId: String,
@@ -92,6 +97,7 @@ data class EventEntity(
 )
 
 @Entity(tableName = "location_events", indices = [Index("locationId")])
+@Serializable
 data class LocationEventEntity(
     @PrimaryKey val key: String,
     val locationId: String,
@@ -177,6 +183,8 @@ interface FlowDao {
     suspend fun executionsForAutomation(id: String): List<ExecutionEntity>
 
     @Insert suspend fun diagnostic(value: DiagnosticEntity)
+
+    @Query("SELECT * FROM event_ledger") suspend fun events(): List<EventEntity>
 
     @Query("SELECT * FROM event_ledger WHERE `key`=:key")
     suspend fun event(key: String): EventEntity?

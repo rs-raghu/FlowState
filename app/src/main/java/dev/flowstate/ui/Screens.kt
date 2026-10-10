@@ -577,6 +577,7 @@ private fun Activity(
 ) {
     var simulation by remember { mutableStateOf<Definition?>(null) }
     var simulationLibrary by remember { mutableStateOf<List<Definition>>(emptyList()) }
+    var simulationSnapshot by remember { mutableStateOf<Execution?>(null) }
     val events by vm.events.collectAsStateWithLifecycle()
     val locationEvents by vm.locationEvents.collectAsStateWithLifecycle()
     Content {
@@ -599,8 +600,10 @@ private fun Activity(
                     }
                     TextButton(
                         onClick = {
-                            simulation = e.definition
-                            simulationLibrary = e.library.values.toList()
+                            simulation =
+                                e.frames.firstNotNullOfOrNull { it.definition } ?: e.definition
+                            simulationLibrary = e.capturedDefinitions().distinctBy { it.id }
+                            simulationSnapshot = e
                         }
                     ) {
                         Text("Debug")
@@ -609,10 +612,7 @@ private fun Activity(
                         TextButton(onClick = { vm.cancel(row.id) }) { Text("Cancel run") }
                 }
                 if (expanded == row.id) {
-                    Text("Local values: ${e.locals.mapValues {it.value.display()}}")
-                    e.trace.takeLast(40).forEach {
-                        Text("${it.node}: ${it.detail}", style = MaterialTheme.typography.bodySmall)
-                    }
+                    ExecutionInspector(e)
                 }
             }
         }
@@ -636,7 +636,7 @@ private fun Activity(
             }
         }
         simulation?.let { d ->
-            Simulator(d, simulationLibrary)
+            Simulator(d, simulationLibrary, initial = simulationSnapshot)
         }
     }
 }
@@ -721,6 +721,7 @@ private fun SettingsScreen(
     val platform = remember { Platform(context) }
     var healthVersion by remember { mutableIntStateOf(0) }
     var backgroundExplanation by remember { mutableStateOf(false) }
+    var importMode by remember { mutableStateOf("new") }
     val permissions =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             healthVersion++
@@ -732,7 +733,7 @@ private fun SettingsScreen(
         ) { uri ->
             if (uri != null)
                 vm.work {
-                    val source = Backups(vm.application.database).export()
+                    val source = Backups(vm.application.database, prefs).export()
                     context.contentResolver.openOutputStream(uri)?.use {
                         it.write(source.toByteArray(Charsets.UTF_8))
                     } ?: error("Cannot open export")
@@ -749,13 +750,15 @@ private fun SettingsScreen(
                             val buffer = ByteArray(8192)
                             var read = it.read(buffer)
                             while (read != -1) {
-                                require(output.size() + read <= 2_000_000) { "Backup exceeds 2 MB" }
+                                require(output.size() + read <= 16_000_000) {
+                                    "Backup exceeds 16 MB"
+                                }
                                 output.write(buffer, 0, read)
                                 read = it.read(buffer)
                             }
                             output.toString("UTF-8")
                         } ?: error("Cannot read backup")
-                    val count = vm.application.coordinator.importBackup(source)
+                    val count = vm.application.coordinator.importBackup(source, importMode)
                     vm.message.value = "Imported $count disabled automations"
                 }
         }
@@ -848,8 +851,23 @@ private fun SettingsScreen(
         }
         Panel {
             Text("Local backup", style = MaterialTheme.typography.titleLarge)
+            Column {
+                listOf("new", "merge", "overwrite").forEach { mode ->
+                    FilterChip(
+                        selected = importMode == mode,
+                        onClick = { importMode = mode },
+                        label = {
+                            Text(
+                                if (mode == "merge") "Merge by name (keep existing)"
+                                else if (mode == "overwrite") "Overwrite matching IDs"
+                                else "New IDs only"
+                            )
+                        },
+                    )
+                }
+            }
             Text(
-                "Export workspaces and saved locations. History and variables stay on this installation. Validated imports start disabled; duplicate IDs are rejected."
+                "Export workflows, locations, checklist templates, persistent values, recent execution snapshots, trigger ledger and preferences. Imports validate before writing and start disabled; historical active runs are archived as cancelled."
             )
             Row {
                 TextButton(onClick = { export.launch("FlowState-backup.json") }) { Text("Export") }

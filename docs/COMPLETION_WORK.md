@@ -24,9 +24,17 @@ CALL supports up to 20 named expression parameters, named callee-to-caller local
 
 Verification: 60 core tests pass, including multi-value wait/restart, incompatible output bindings, typed-list updates and malformed-field attribution. Debug/native test compilation pass. Two editor roundtrip regressions cover dynamic list and parameter inputs.
 
+## Debugger, editor recovery and complete backup
+
+Implemented step into/over/out, configurable node breakpoints, chronological fake event streams, permission/trigger eligibility explanations, captured-run debugging, branch inspectors and replay of up to 200 recorded simulation states. Replay restores values, effects, occupancy, permissions and deterministic interaction token generation. Core simulation tests pass.
+
+The editor persists its foreground draft on changes and restores after recreation, and native bridge parsing is depth bounded. Backups schema 2 include templates, persistent values, recent execution snapshots, event ledger and preferences. Merge-by-name keeps existing definitions; overwrite updates matching IDs while disabling automatic triggers. Imported active snapshots become cancelled historical records. Native backup and actual WebView tests are included.
+
+Verification: 63 core and six editor tests pass; debug assembly, lint and native test compilation pass. API 36 passed the previous 14 native cases plus process recovery. The API 29 named-notification test observed asynchronous platform posting; a bounded state wait repairs its assertion. Current native additions await CI.
+
 ## Remaining software stages
 
-- Simulator, native UI and backup/personal settings completion.
+- Personal defaults, final templates and remaining native/platform checks.
 - Current Android stack migration and release runtime/platform verification.
 - Final requirement audit and APK/handoff documentation.
 

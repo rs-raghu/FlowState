@@ -11,7 +11,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
-class Coordinator(private val db: FlowDatabase, context: Context) {
+class Coordinator(private val db: FlowDatabase, private val context: Context) {
     private val dao = db.dao()
     private val platform = Platform(context)
     private val operations = Mutex()
@@ -109,8 +109,11 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             )
     }
 
-    suspend fun importBackup(source: String) = operations.withLock {
-        val result = Backups(db).import(source)
+    suspend fun importBackup(source: String, mode: String = "new") = operations.withLock {
+        val result = Backups(db, Preferences(context)).import(source, mode)
+        dao.automations()
+            .filter { !it.enabled }
+            .forEach { platform.cancelAlarm("automation", it.id) }
         reconcileInternal()
         result
     }

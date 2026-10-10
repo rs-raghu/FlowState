@@ -10,6 +10,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.webkit.*
 import dev.flowstate.data.AutomationEntity
+import dev.flowstate.data.EditorDrafts
 import dev.flowstate.engine.*
 import java.io.ByteArrayInputStream
 import java.util.UUID
@@ -27,6 +28,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
     var confirmClose by remember { mutableStateOf(false) }
     var simulation by remember { mutableStateOf<Definition?>(null) }
     val scope = rememberCoroutineScope()
+    val drafts = remember { EditorDrafts(vm.application) }
     fun close() {
         if (dirty) confirmClose = true else onClose()
     }
@@ -78,9 +80,22 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                             vm.message.value = "Editor message exceeds 2 MB"
                             return@addWebMessageListener
                         }
+                        try {
+                            val immediate =
+                                codec.parseToJsonElement(SafeInput.json(data)).jsonObject
+                            if (immediate["action"]?.jsonPrimitive?.content == "dirty") {
+                                dirty = true
+                                immediate["workspace"]?.let { drafts.save(a.id, it.toString()) }
+                                return@addWebMessageListener
+                            }
+                        } catch (e: Exception) {
+                            vm.message.value = e.message
+                            return@addWebMessageListener
+                        }
                         scope.launch {
                             try {
-                                val payload = codec.parseToJsonElement(data).jsonObject
+                                val payload =
+                                    codec.parseToJsonElement(SafeInput.json(data)).jsonObject
                                 when (payload["action"]?.jsonPrimitive?.content) {
                                     "ready" -> {
                                         fun resources(items: List<Pair<String, String>>) =
@@ -118,11 +133,17 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                             )
                                         }
                                         evaluateJavascript(
-                                            "FlowEditor.resources($r);FlowEditor.load(${a.workspace})",
+                                            "FlowEditor.resources($r);FlowEditor.load(${drafts.source(a.id) ?: a.workspace})",
                                             null,
                                         )
+                                        dirty = drafts.source(a.id) != null
                                     }
-                                    "dirty" -> dirty = true
+                                    "dirty" -> {
+                                        dirty = true
+                                        payload["workspace"]?.let {
+                                            drafts.save(a.id, it.toString())
+                                        }
+                                    }
                                     "close" -> close()
                                     "save",
                                     "copy",
@@ -157,6 +178,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                                     source,
                                                 )
                                                 dirty = false
+                                                drafts.clear(a.id)
                                                 evaluateJavascript("FlowEditor.saved()", null)
                                                 if (action == "copy") onClose()
                                             }
@@ -216,6 +238,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                 TextButton(
                     onClick = {
                         confirmClose = false
+                        drafts.clear(a.id)
                         onClose()
                     }
                 ) {

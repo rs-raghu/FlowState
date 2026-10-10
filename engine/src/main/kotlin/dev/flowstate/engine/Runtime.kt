@@ -3,6 +3,8 @@ package dev.flowstate.engine
 import java.util.UUID
 
 class Runtime(private val resolve: (String) -> Definition? = { null }) {
+    var interactionToken: () -> String = { UUID.randomUUID().toString() }
+
     fun start(
         id: String,
         d: Definition,
@@ -203,6 +205,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         "call" -> returned(frame)
                         else -> e = e.copy(cursor = frame.returnTo)
                     }
+                    if (singleStep && frame.kind == "call") break
                     continue
                 }
                 require(e.steps < e.definition.maxSteps) { "Runtime step budget exhausted" }
@@ -279,7 +282,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         require(timeout in 0..31536000)
                         val interaction =
                             Interaction(
-                                UUID.randomUUID().toString(),
+                                interactionToken(),
                                 n.id,
                                 kind,
                                 f("TITLE", "Question"),
