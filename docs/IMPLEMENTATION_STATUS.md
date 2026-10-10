@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated 2026-10-10. The requested software implementation is present. Final automated device verification is in progress; physical geofence, reboot/OEM restrictions and battery acceptance remain for the user's final phone check. This replaces the earlier inventory of missing rich reminders, templates, policies, debugger, backups, settings and current-stack work: those features are now implemented.
+Updated 2026-10-10. The requested software implementation and automated verification are complete. Physical geofence, reboot/OEM restrictions and battery acceptance remain for the user's final phone check. This replaces the earlier inventory of missing rich reminders, templates, policies, debugger, backups, settings and current-stack work: those features are now implemented.
 
 | Area | Implementation | Evidence |
 |---|---|---|
@@ -14,6 +14,6 @@ Updated 2026-10-10. The requested software implementation is present. Final auto
 | Backup | Schema 2: configuration/templates/values/recent history/ledger/settings; disabled new/merge/overwrite imports; active history archived | Native large-envelope, template precedence and rollback tests |
 | Resource controls | Configurable steps/loops/bursts/CALL depth/notification rate, bounded active runs/branches/timers/library/snapshot/values/history/import | Core overflow, restart, parallel and UTF-8 regressions |
 
-Local verification: 74 engine tests, six editor tests; debug assembly, lint (zero errors, 33 warnings), native test compilation and R8 release assembly. Runs 38035623654 and 38041344419 pass the complete API 36 and API 29 sequences respectively, including force-stop/reopen, permission recovery and R8 launch. Current-source run 38042188535 verifies the corrected emulator setup and real editor renderer recovery; see TESTING.md for the final executed result.
+Local verification: 74 engine tests, six editor tests; debug assembly, lint (zero errors, 33 warnings), native test compilation and R8 release assembly. Final run [38042626097](https://github.com/rs-raghu/FlowState/actions/runs/38042626097), source c20794d, passes build and the complete API 29/36/37.0 matrix. Each version passes 24 standard native cases (including real editor renderer recovery), force-stop/reopen prepare/verify, external notification permission recovery and optimized APK installation/launch. Reports were inspected; no device result is inferred from compilation.
 
 Every completed stage is committed and pushed. APKs, SDKs, caches and signing credentials stay outside Git. No personal signing credentials were supplied; installable debug and optimized APKs use the local debug key. Full product acceptance requires the phone checks in PHONE_ACCEPTANCE.md.

@@ -1,6 +1,6 @@
 # Known limitations and final checks
 
-Updated 2026-10-10. The prior functional gap inventory has been implemented. The final hosted device run must pass before the handoff is marked verified; current evidence and any failures are in TESTING.md.
+Updated 2026-10-10. The prior functional gap inventory has been implemented. Final hosted run 38042626097 passes build and the complete API 29/36/37.0 matrix; inspected evidence and acceptance boundaries are in TESTING.md. Physical acceptance remains below.
 
 ## Physical acceptance
 
