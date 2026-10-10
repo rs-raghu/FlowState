@@ -64,3 +64,7 @@ Fixed 16 MB backup envelope handling while retaining each workspace/snapshot’s
 Added optional saved-location icons with Room schema 5 and a non-destructive 4-to-5 migration, backup roundtrip support, a bundled native help guide, configurable CALL depth and specific compiler remediation. Core coverage is now 73 tests; six editor tests pass. Schema migration tests validate every preserved schema version.
 
 Run 38035623654 passed build and the complete API 36 job, including normal native tests, external process recovery, notification denial/recovery and R8 launch. Android 10 exposed double serialization in the older-WebView message queue; return its JSON message string directly for the single evaluateJavascript decoding boundary. Special permission tests also explicitly require their external phase. Android 17’s SurfaceFlinger repeatedly crashed in the deprecated indirect GPU mode; use the current direct SwiftShader renderer. These corrections await the next hosted run.
+
+## Required-input attribution
+
+Missing expression inputs now carry their owning block ID and a concrete connection correction, including nested list/expression inputs. Remaining root-level issues point to the trigger when there is no more specific block. A disconnected IF regression passes; core total is 74 tests.

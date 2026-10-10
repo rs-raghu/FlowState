@@ -7,6 +7,16 @@ import org.junit.Test
 
 class ResourceTest {
     @Test
+    fun disconnectedExpressionHighlightsItsOwningAction() {
+        val source =
+            """{"blocks":{"blocks":[{"type":"fs_trigger","id":"trigger","next":{"block":{"type":"fs_if","id":"decision"}}}]}}"""
+        val failure = assertFailsWith<ValidationException> { Compiler.compile(source, "a", 1) }
+        val missing = failure.issues.first { it.code == "INPUT" }
+        assertEquals("decision", missing.block)
+        assertTrue(missing.correction.contains("Connect"))
+    }
+
+    @Test
     fun configuredCallDepthRejectsExcessiveTransitiveCapture() {
         val child =
             Definition(

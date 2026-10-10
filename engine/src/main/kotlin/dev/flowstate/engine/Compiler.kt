@@ -153,11 +153,17 @@ object Compiler {
                 return key
             }
 
-            fun expression(b: JsonObject?, depth: Int): Expr {
+            fun expression(b: JsonObject?, depth: Int, owner: String): Expr {
 
                 if (b == null) {
 
-                    issues += Issue("INPUT", "Connect the required expression")
+                    issues +=
+                        Issue(
+                            "INPUT",
+                            "Connect the required expression",
+                            owner,
+                            "Connect a value to the highlighted block's required input",
+                        )
 
                     return Expr("literal", Value.NULL)
                 }
@@ -216,7 +222,9 @@ object Compiler {
                             "list",
                             name = f["TYPE"] ?: "STRING",
                             args =
-                                (0 until count).map { expression(input(b, "ITEM$it"), depth + 1) },
+                                (0 until count).map {
+                                    expression(input(b, "ITEM$it"), depth + 1, bid)
+                                },
                         )
                     }
 
@@ -261,7 +269,7 @@ object Compiler {
                             name = f["NAME"] ?: "",
                             args =
                                 (0 until n).map {
-                                    expression(input(b, listOf("A", "B", "C")[it]), depth + 1)
+                                    expression(input(b, listOf("A", "B", "C")[it]), depth + 1, bid)
                                 },
                         )
                     }
@@ -344,7 +352,7 @@ object Compiler {
                     }
 
                 expressionNames.forEach {
-                    expressions[it] = expression(input(first, it), depth + 1)
+                    expressions[it] = expression(input(first, it), depth + 1, bid)
                 }
 
                 val branches = mutableMapOf<String, String?>()
@@ -457,7 +465,13 @@ object Compiler {
                     else it
                 }
 
-            if (issues.isNotEmpty()) throw ValidationException(issues)
+            if (issues.isNotEmpty())
+                throw ValidationException(
+                    issues.map {
+                        if (it.block.isBlank()) it.copy(block = top["id"]!!.jsonPrimitive.content)
+                        else it
+                    }
+                )
 
             return d
         } catch (e: ValidationException) {
