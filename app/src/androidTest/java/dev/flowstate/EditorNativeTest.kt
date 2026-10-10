@@ -123,6 +123,7 @@ class EditorNativeTest {
                 compose.onAllNodesWithText("Reload editor").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Reload editor").performClick()
+            compose.waitForIdle()
             ready()
             assertTrue(
                 js("JSON.stringify(FlowEditor.snapshot())").contains("Draft survives rotation")

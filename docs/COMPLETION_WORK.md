@@ -82,3 +82,5 @@ The setup action names unrecognized download revisions by their build number, so
 ## WebView renderer recovery
 
 The final lint review identified an unhandled renderer termination path. The editor now destroys the failed WebView, stops using its bridge, shows a reload action and restores the durable draft into a fresh WebView. The existing native editor fixture explicitly terminates the renderer on providers supporting that API, reloads and verifies the draft before saving. Older Android backup exclusion is also explicit in the manifest. Debug/lint/native compilation and signed optimized assembly pass in 1m 56s; lint has zero errors/33 warnings. Committed and pushed as 09decf5; run 38042188535 checks current-source execution.
+
+Run 38042188535 passes hosted build and all other standard native cases on API 29/36/37; the new renderer check queried the view before Compose's test clock applied the reload action. Add an explicit `waitForIdle` after the tap before querying JavaScript. Native compilation passes. The corrected tools/GLDirectMem configuration now lets API 37 finish instrumentation without SurfaceFlinger restarts.
