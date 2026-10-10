@@ -68,3 +68,7 @@ Run 38035623654 passed build and the complete API 36 job, including normal nativ
 ## Required-input attribution
 
 Missing expression inputs now carry their owning block ID and a concrete connection correction, including nested list/expression inputs. Remaining root-level issues point to the trigger when there is no more specific block. A disconnected IF regression passes; core total is 74 tests.
+
+## API 37 system-image stabilization
+
+Direct rendering alone did not fix the system image: SurfaceFlinger aborts on its graphics DMA readback assertion before APK installation. CI disables direct graphics memory and switches API 37 to three-button navigation before building/testing, avoiding the gesture-bar region sampling path. This modifies the emulator harness, not production application behavior. Shell syntax passes; hosted execution remains required.

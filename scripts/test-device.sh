@@ -2,10 +2,16 @@
 set -euo pipefail
 mkdir -p app/build/reports/device
 trap 'adb logcat -d > app/build/reports/device/logcat.txt || true' EXIT
+# Current API 37 images assert in graphics DMA readback used by gesture-bar region sampling.
+# Three-button navigation avoids that image path while retaining normal Activity/UI testing.
+api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
+if [ "$api" -ge 37 ]; then
+  adb shell cmd overlay enable --user 0 com.android.internal.systemui.navbar.threebutton
+  adb shell cmd overlay disable --user 0 com.android.internal.systemui.navbar.gestural
+fi
 bash ./gradlew :app:connectedDebugAndroidTest --max-workers=2 --console=plain
 bash ./scripts/test-process-recovery.sh
 # Revocation can kill the application, so apply it outside instrumentation.
-api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
 if [ "$api" -ge 33 ]; then
   adb shell pm revoke dev.flowstate android.permission.POST_NOTIFICATIONS
 else
