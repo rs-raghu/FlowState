@@ -577,6 +577,8 @@ private fun Activity(
 ) {
     var simulation by remember { mutableStateOf<Definition?>(null) }
     var simulationLibrary by remember { mutableStateOf<List<Definition>>(emptyList()) }
+    val events by vm.events.collectAsStateWithLifecycle()
+    val locationEvents by vm.locationEvents.collectAsStateWithLifecycle()
     Content {
         Title("Activity", "Respond to questions and inspect execution history.")
         rows.forEach { row ->
@@ -615,6 +617,24 @@ private fun Activity(
             }
         }
         if (rows.isEmpty()) Text("No executions yet. Run an automation manually to test it.")
+        if (events.isNotEmpty()) {
+            Text("Trigger history", style = MaterialTheme.typography.titleLarge)
+            events.take(30).forEach {
+                Text(
+                    "${date(it.at)} · ${automations.find { a -> a.id == it.automationId }?.name ?: it.automationId} · ${it.outcome}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        if (locationEvents.isNotEmpty()) {
+            Text("Location transitions", style = MaterialTheme.typography.titleLarge)
+            locationEvents.take(30).forEach {
+                Text(
+                    "${date(it.at)} · ${it.locationId} · ${it.transition}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         simulation?.let { d ->
             Simulator(d, simulationLibrary)
         }

@@ -20,6 +20,7 @@ android {
         testInstrumentationRunnerArguments["notClass"] = "dev.flowstate.ProcessRecoveryTest"
     }
     buildFeatures { compose = true; buildConfig = true }
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     val releaseStore = providers.environmentVariable("FLOWSTATE_STORE_FILE").orNull
     signingConfigs {
@@ -58,6 +59,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.room:room-testing:2.8.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.10.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

@@ -24,15 +24,18 @@ object Scheduling {
         )
             return false
         return now - at <= t.graceSeconds * 1000 ||
-            t.recurrence == "weeklyWindow" &&
-                t.catchUp == "window" &&
-                key == windowKey(t, now, device)
+            t.recurrence in windows && t.catchUp == "window" && key == windowKey(t, now, device)
     }
 
     fun zone(t: Trigger, device: ZoneId) = if (t.zone == "device") device else ZoneId.of(t.zone)
 
     fun validate(t: Trigger) {
         require(t.kind in setOf("manual", "time", "location")) { "Unknown trigger" }
+        require(t.concurrency in setOf("parallel", "ignore", "queue", "replace"))
+        require(t.maxActive in 1..4 && t.priority in -1..1)
+        require(
+            t.frequency in setOf("cooldown", "daily", "weekly", "entry", "completion", "unlimited")
+        )
         require(t.cooldownSeconds in 0..31536000 && t.graceSeconds in 0..604800)
         if (t.kind == "location") {
             require(t.locationId.isNotBlank())
@@ -67,6 +70,8 @@ object Scheduling {
                     "interval",
                     "once",
                     "weeklyWindow",
+                    "dailyWindow",
+                    "monthlyWindow",
                 )
         )
         require(t.catchUp in setOf("skip", "grace", "window", "record", "ask"))
@@ -77,7 +82,8 @@ object Scheduling {
         }
         t.dates.forEach(LocalDate::parse)
         if (t.recurrence in setOf("dates", "once")) require(t.dates.isNotEmpty())
-        if (t.recurrence in setOf("interval", "monthly")) require(t.startDate.isNotEmpty())
+        if (t.recurrence in setOf("interval", "monthly", "monthlyWindow"))
+            require(t.startDate.isNotEmpty())
     }
 
     // java.time moves gap times forward by the gap and picks the earlier offset during overlaps.
@@ -107,11 +113,13 @@ object Scheduling {
         )
             return false
         return when (t.recurrence) {
-            "daily" -> true
+            "daily",
+            "dailyWindow" -> true
             "weekdays",
             "weekly" -> date.dayOfWeek.value in t.days
             "weeklyWindow" -> date.dayOfWeek.value == t.windowDay
-            "monthly" ->
+            "monthly",
+            "monthlyWindow" ->
                 date.dayOfMonth ==
                     minOf(LocalDate.parse(t.startDate).dayOfMonth, date.lengthOfMonth())
             "dates",
@@ -140,7 +148,7 @@ object Scheduling {
                 if (found != null)
                     return Occurrence(
                         found,
-                        if (t.recurrence == "weeklyWindow") windowKey(t, found, device)
+                        if (t.recurrence in windows) windowKey(t, found, device)
                         else "${z.id}:$day:${Instant.ofEpochMilli(found).atZone(z).toLocalTime()}",
                     )
             }
@@ -152,17 +160,42 @@ object Scheduling {
         val z = zone(t, device)
         val current = Instant.ofEpochMilli(now).atZone(z)
         var date =
-            current.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.of(t.windowDay)))
+            when (t.recurrence) {
+                "dailyWindow" -> current.toLocalDate()
+                "monthlyWindow" ->
+                    current
+                        .toLocalDate()
+                        .withDayOfMonth(
+                            minOf(
+                                LocalDate.parse(t.startDate).dayOfMonth,
+                                current.toLocalDate().lengthOfMonth(),
+                            )
+                        )
+                else ->
+                    current
+                        .toLocalDate()
+                        .with(TemporalAdjusters.previousOrSame(DayOfWeek.of(t.windowDay)))
+            }
         var start = resolve(date, LocalTime.parse(t.times.first()), z)
         if (start > now) {
-            date = date.minusWeeks(1)
+            date =
+                when (t.recurrence) {
+                    "dailyWindow" -> date.minusDays(1)
+                    "monthlyWindow" ->
+                        date.minusMonths(1).let {
+                            it.withDayOfMonth(
+                                minOf(LocalDate.parse(t.startDate).dayOfMonth, it.lengthOfMonth())
+                            )
+                        }
+                    else -> date.minusWeeks(1)
+                }
             start = resolve(date, LocalTime.parse(t.times.first()), z)
         }
         return start
     }
 
     fun windowKey(t: Trigger, now: Long, device: ZoneId) =
-        "window:${zone(t,device).id}:${Instant.ofEpochMilli(windowStart(t,now,device)).atZone(zone(t,device)).toLocalDate()}"
+        "window:${if(t.recurrence == "weeklyWindow") "" else t.recurrence + ":"}${zone(t,device).id}:${Instant.ofEpochMilli(windowStart(t,now,device)).atZone(zone(t,device)).toLocalDate()}"
 
     fun recovery(t: Trigger, now: Long, scheduled: Long?, device: ZoneId): Occurrence? {
         if (
@@ -172,7 +205,7 @@ object Scheduling {
                 scheduled > now
         )
             return null
-        if (t.recurrence == "weeklyWindow" && t.catchUp == "window") {
+        if (t.recurrence in windows && t.catchUp == "window") {
             val start = windowStart(t, now, device)
             val date = Instant.ofEpochMilli(start).atZone(zone(t, device)).toLocalDate()
             return if (eligible(t, date)) Occurrence(start, windowKey(t, now, device)) else null
@@ -183,9 +216,11 @@ object Scheduling {
     }
 
     fun occurrenceKey(t: Trigger, at: Long, device: ZoneId): String {
-        if (t.recurrence == "weeklyWindow") return windowKey(t, at, device)
+        if (t.recurrence in windows) return windowKey(t, at, device)
         val z = zone(t, device)
         val local = Instant.ofEpochMilli(at).atZone(z)
         return "${z.id}:${local.toLocalDate()}:${local.toLocalTime()}"
     }
+
+    val windows = setOf("dailyWindow", "weeklyWindow", "monthlyWindow")
 }

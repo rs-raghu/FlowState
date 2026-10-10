@@ -209,6 +209,36 @@ object Expressions {
                 val v = c.occupancy[e.name]
                 Value.string(if (v == null || c.now - v.second > 3600000) "UNKNOWN" else v.first)
             }
+            "latitude",
+            "longitude",
+            "radius" ->
+                c.locations[e.name]?.let {
+                    Value.number(
+                        when (e.op) {
+                            "latitude" -> it.latitude
+                            "longitude" -> it.longitude
+                            else -> it.radius
+                        }
+                    )
+                } ?: Value.NULL
+            "lastEntry",
+            "lastExit",
+            "lastDwell" ->
+                c.locations[e.name]?.let {
+                    val at =
+                        when (e.op) {
+                            "lastEntry" -> it.entered
+                            "lastExit" -> it.exited
+                            else -> it.dwell
+                        }
+                    at?.let { Value(Type.INSTANT, it.toString()) } ?: Value.NULL
+                } ?: Value.NULL
+            "dwellDuration" ->
+                c.locations[e.name]?.let {
+                    val entered = it.entered
+                    if (entered == null || (it.exited ?: Long.MIN_VALUE) >= entered) Value.NULL
+                    else Value(Type.DURATION, (c.now - entered).coerceAtLeast(0).toString())
+                } ?: Value.NULL
             else -> error("Unsupported expression ${e.op}")
         }
     }

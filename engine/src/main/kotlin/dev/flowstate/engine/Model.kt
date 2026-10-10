@@ -105,6 +105,10 @@ data class Trigger(
     val windowDay: Int = 5,
     val eligibleFrom: String = "",
     val eligibleTo: String = "",
+    val concurrency: String = "parallel",
+    val maxActive: Int = 4,
+    val frequency: String = "cooldown",
+    val priority: Int = 0,
 )
 
 @Serializable
@@ -263,6 +267,17 @@ data class EvaluationContext(
     val persistent: Map<String, Value>,
     val automationId: String,
     val occupancy: Map<String, Pair<String, Long>> = emptyMap(),
+    val locations: Map<String, LocationState> = emptyMap(),
+)
+
+@Serializable
+data class LocationState(
+    val latitude: Double,
+    val longitude: Double,
+    val radius: Double,
+    val entered: Long? = null,
+    val exited: Long? = null,
+    val dwell: Long? = null,
 )
 
 data class Issue(

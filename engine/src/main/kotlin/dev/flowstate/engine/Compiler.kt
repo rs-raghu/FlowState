@@ -63,7 +63,23 @@ object Compiler {
             "subtractDuration",
             "format",
         )
-    private val zero = setOf("now", "date", "time", "weekday", "month", "weekend", "occupancy")
+    private val zero =
+        setOf(
+            "now",
+            "date",
+            "time",
+            "weekday",
+            "month",
+            "weekend",
+            "occupancy",
+            "latitude",
+            "longitude",
+            "radius",
+            "lastEntry",
+            "lastExit",
+            "lastDwell",
+            "dwellDuration",
+        )
 
     fun compile(
         source: String,
@@ -267,6 +283,10 @@ object Compiler {
                 windowDay = (f["WINDOWDAY"] ?: "5").toInt(),
                 eligibleFrom = f["ELIGIBLEFROM"] ?: "",
                 eligibleTo = f["ELIGIBLETO"] ?: "",
+                concurrency = f["CONCURRENCY"] ?: "parallel",
+                maxActive = (f["MAXACTIVE"] ?: "4").toInt(),
+                frequency = f["FREQUENCY"] ?: "cooldown",
+                priority = (f["PRIORITY"] ?: "0").toInt(),
             )
         val entry = chain(top["next"]?.jsonObject?.get("block")?.jsonObject, 0)
         val d =
@@ -407,14 +427,21 @@ object Compiler {
                 "beforeTime",
                 "afterTime" -> Type.BOOLEAN
                 "now",
+                "lastEntry",
+                "lastExit",
+                "lastDwell",
                 "addDuration",
                 "subtractDuration" -> Type.INSTANT
-                "elapsed" -> Type.DURATION
+                "elapsed",
+                "dwellDuration" -> Type.DURATION
                 "add",
                 "subtract",
                 "multiply",
                 "mod" -> if (types.all { it == Type.INTEGER }) Type.INTEGER else Type.DECIMAL
                 "divide",
+                "latitude",
+                "longitude",
+                "radius",
                 "toNumber" -> Type.DECIMAL
                 "weekday",
                 "month",

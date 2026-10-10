@@ -237,22 +237,78 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
     ): String? {
         val rt = runtime()
         var execution: String? = null
+        val replaced = mutableListOf<String>()
+        var queued = false
         db.withTransaction {
             val a = dao.automation(id) ?: return@withTransaction
-            if (automatic && !a.enabled || dao.byEvent("$id:$event") != null) return@withTransaction
-            val d = overrideDefinition ?: codec.decodeFromString<Definition>(a.definition)
-            if (automatic && now - a.lastStarted < d.trigger.cooldownSeconds * 1000)
+            val key = "$id:$event"
+            if (automatic && !a.enabled || dao.byEvent(key) != null || dao.event(key) != null)
                 return@withTransaction
-            require(dao.active().size < 32) { "Global active-execution limit reached" }
-            require(dao.active().count { it.automationId == id } < 4) {
-                "This automation already has four active executions"
+            val d = overrideDefinition ?: codec.decodeFromString<Definition>(a.definition)
+            val active = dao.active()
+            val own = active.filter { it.automationId == id }
+            val local =
+                java.time.Instant.ofEpochMilli(now)
+                    .atZone(Scheduling.zone(d.trigger, ZoneId.systemDefault()))
+            val frequencyKey =
+                when (d.trigger.frequency) {
+                    "daily" -> "$id:frequency:daily:${local.toLocalDate()}"
+                    "weekly" ->
+                        "$id:frequency:weekly:${local.toLocalDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))}"
+                    "entry" ->
+                        "$id:frequency:entry:${dao.lastLocationEvent(d.trigger.locationId, "enter")?.at ?: 0}"
+                    else -> null
+                }
+            val suppressed =
+                automatic &&
+                    (d.trigger.frequency == "cooldown" &&
+                        now - a.lastStarted < d.trigger.cooldownSeconds * 1000 ||
+                        d.trigger.frequency == "completion" && own.isNotEmpty() ||
+                        frequencyKey?.let { dao.event(it) != null } == true)
+            if (suppressed || d.trigger.concurrency == "ignore" && own.isNotEmpty()) {
+                dao.saveEvent(EventEntity(key, id, now, "Ignored by frequency/concurrency policy"))
+                return@withTransaction
             }
-            val e = rt.start(UUID.randomUUID().toString(), d, now)
-            dao.insertExecution(entity(e, id, "$id:$event"))
+            if (d.trigger.concurrency == "replace") {
+                own.forEach { row ->
+                    val old = codec.decodeFromString<Execution>(row.snapshot)
+                    dao.saveExecution(
+                        entity(
+                            old.copy(state = State.CANCELLED, interaction = null, wakeAt = null),
+                            id,
+                            row.eventKey,
+                        )
+                    )
+                    dao.deleteExecutionOutbox(row.id)
+                    replaced += row.id
+                }
+            }
+            val running = own.count { it.state != State.QUEUED.name }
+            queued = d.trigger.concurrency == "queue" && running >= d.trigger.maxActive
+            require(active.size - replaced.size < 32) {
+                "Global active/queued execution limit reached"
+            }
+            if (!queued && d.trigger.concurrency != "replace")
+                require(running < d.trigger.maxActive) {
+                    "Automation active-execution limit reached"
+                }
+            val e =
+                rt.start(UUID.randomUUID().toString(), d, now).let {
+                    if (queued) it.copy(state = State.QUEUED) else it
+                }
+            dao.insertExecution(entity(e, id, key))
+            dao.saveEvent(EventEntity(key, id, now, if (queued) "QUEUED" else "STARTED"))
+            frequencyKey
+                ?.takeIf { automatic }
+                ?.let { dao.saveEvent(EventEntity(it, id, now, "STARTED")) }
             dao.saveAutomation(a.copy(lastStarted = now))
             execution = e.id
         }
-        execution?.let { driveInternal(it) }
+        replaced.forEach {
+            platform.cancelAlarm("execution", it)
+            platform.cancelAllExecutionNotifications(it)
+        }
+        if (!queued) execution?.let { driveInternal(it) }
         return execution
     }
 
@@ -269,6 +325,21 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
     }
 
     private suspend fun driveInternal(id: String) {
+        val initial = dao.execution(id) ?: return
+        if (initial.state == State.QUEUED.name) {
+            val e = codec.decodeFromString<Execution>(initial.snapshot)
+            if (
+                dao.active().count {
+                    it.automationId == initial.automationId &&
+                        it.id != id &&
+                        it.state != State.QUEUED.name
+                } >= e.definition.trigger.maxActive
+            )
+                return
+            dao.saveExecution(
+                entity(e.copy(state = State.CREATED), initial.automationId, initial.eventKey)
+            )
+        }
         val rt = runtime()
         var latest: Execution? = null
         for (slice in 0 until 5) {
@@ -299,7 +370,27 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                             }
                         }
                 val occupancy = dao.locations().associate { it.id to (it.occupancy to it.eventAt) }
-                val tick = rt.tick(e, now, ZoneId.systemDefault().id, persistent, occupancy)
+                val locationStates =
+                    dao.locations().associate { l ->
+                        l.id to
+                            LocationState(
+                                l.latitude,
+                                l.longitude,
+                                l.radius.toDouble(),
+                                dao.lastLocationEvent(l.id, "enter")?.at,
+                                dao.lastLocationEvent(l.id, "exit")?.at,
+                                dao.lastLocationEvent(l.id, "dwell")?.at,
+                            )
+                    }
+                val tick =
+                    rt.tick(
+                        e,
+                        now,
+                        ZoneId.systemDefault().id,
+                        persistent,
+                        occupancy,
+                        locations = locationStates,
+                    )
                 dao.saveExecution(entity(tick.execution, row.automationId, row.eventKey))
                 tick.persistent.forEach { (key, value) ->
                     val split = key.lastIndexOf(':')
@@ -328,7 +419,20 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                 platform.cancelAlarm("execution", id)
                 if (e.state in Runtime.terminal) platform.cancelNotification(id)
             }
+            if (e.state in Runtime.terminal) promoteQueue(initial.automationId)
         }
+    }
+
+    private suspend fun promoteQueue(automation: String) {
+        dao.active()
+            .filter { it.automationId == automation && it.state == State.QUEUED.name }
+            .sortedWith(
+                compareByDescending<ExecutionEntity> {
+                        codec.decodeFromString<Execution>(it.snapshot).definition.trigger.priority
+                    }
+                    .thenBy { codec.decodeFromString<Execution>(it.snapshot).started }
+            )
+            .forEach { platform.enqueue("execution", it.id, key = "queue") }
     }
 
     private suspend fun respondInternal(id: String, token: String, response: String) {
@@ -364,6 +468,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         }
         platform.cancelAlarm("execution", id)
         platform.cancelAllExecutionNotifications(id)
+        dao.execution(id)?.let { promoteQueue(it.automationId) }
     }
 
     private suspend fun snoozeInternal(id: String, minutes: Long, token: String?) {
@@ -434,10 +539,16 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
     }
 
     private suspend fun geofenceInternal(id: String, transition: String, at: Long) {
+        require(transition in setOf("enter", "exit", "dwell") && at <= now + 60000)
         var accepted = false
         db.withTransaction {
             val l = dao.location(id) ?: return@withTransaction
             if (!l.enabled || at < l.eventAt) return@withTransaction
+            if (
+                dao.locationEvent(LocationEventEntity("$id:$transition:$at", id, transition, at)) ==
+                    -1L
+            )
+                return@withTransaction
             accepted = true
             if (at >= l.eventAt)
                 dao.saveLocation(
@@ -469,12 +580,19 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
             val t = codec.decodeFromString<Definition>(a.definition).trigger
             if (t.kind == "time") {
                 val missedKey = a.nextAt?.let { Scheduling.occurrenceKey(t, it, device) }
-                val delivered = missedKey?.let { dao.byEvent("${a.id}:time:$it") != null } ?: false
+                val delivered =
+                    missedKey?.let {
+                        dao.byEvent("${a.id}:time:$it") != null ||
+                            dao.event("${a.id}:time:$it") != null
+                    } ?: false
                 if (
                     a.nextAt?.let { it <= now } == true &&
                         !delivered &&
                         t.catchUp in setOf("skip", "record")
-                )
+                ) {
+                    dao.saveEvent(
+                        EventEntity("${a.id}:time:$missedKey", a.id, now, "MISSED:${t.catchUp}")
+                    )
                     dao.diagnostic(
                         DiagnosticEntity(
                             at = now,
@@ -482,6 +600,7 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                                 "Missed '${a.name}' occurrence $missedKey; policy ${t.catchUp}",
                         )
                     )
+                }
                 val missed = Scheduling.recovery(t, now, a.nextAt, device)
                 if (missed != null && !delivered) {
                     if (t.catchUp == "ask") {
@@ -556,5 +675,11 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
         }
         drainInternal()
         platform.periodicRecovery()
+        db.withTransaction {
+            dao.pruneExecutions(now - 30L * 86400000)
+            dao.pruneDiagnostics()
+            dao.pruneLocationEvents(now - 90L * 86400000)
+            dao.pruneEvents(now - 400L * 86400000)
+        }
     }
 }

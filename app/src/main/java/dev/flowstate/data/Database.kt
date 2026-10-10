@@ -1,6 +1,8 @@
 package dev.flowstate.data
 
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "automations")
@@ -81,6 +83,22 @@ data class DiagnosticEntity(
     val message: String,
 )
 
+@Entity(tableName = "event_ledger")
+data class EventEntity(
+    @PrimaryKey val key: String,
+    val automationId: String,
+    val at: Long,
+    val outcome: String,
+)
+
+@Entity(tableName = "location_events", indices = [Index("locationId")])
+data class LocationEventEntity(
+    @PrimaryKey val key: String,
+    val locationId: String,
+    val transition: String,
+    val at: Long,
+)
+
 @Dao
 interface FlowDao {
     @Query("SELECT * FROM automations ORDER BY updated DESC")
@@ -151,6 +169,43 @@ interface FlowDao {
     suspend fun executionsForAutomation(id: String): List<ExecutionEntity>
 
     @Insert suspend fun diagnostic(value: DiagnosticEntity)
+
+    @Query("SELECT * FROM event_ledger WHERE `key`=:key")
+    suspend fun event(key: String): EventEntity?
+
+    @Upsert suspend fun saveEvent(value: EventEntity)
+
+    @Query("SELECT * FROM event_ledger ORDER BY at DESC LIMIT 200")
+    fun observeEvents(): Flow<List<EventEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun locationEvent(value: LocationEventEntity): Long
+
+    @Query("SELECT * FROM location_events ORDER BY at DESC LIMIT 200")
+    fun observeLocationEvents(): Flow<List<LocationEventEntity>>
+
+    @Query(
+        "SELECT * FROM location_events WHERE locationId=:id AND transition=:transition ORDER BY at DESC LIMIT 1"
+    )
+    suspend fun lastLocationEvent(id: String, transition: String): LocationEventEntity?
+
+    @Query(
+        "DELETE FROM executions WHERE state IN ('COMPLETED','CANCELLED','FAILED','EXPIRED') AND updated<:before"
+    )
+    suspend fun pruneExecutions(before: Long)
+
+    @Query(
+        "DELETE FROM diagnostics WHERE id NOT IN (SELECT id FROM diagnostics ORDER BY at DESC LIMIT 1000)"
+    )
+    suspend fun pruneDiagnostics()
+
+    @Query(
+        "DELETE FROM location_events WHERE at<:before AND at < (SELECT MAX(newer.at) FROM location_events AS newer WHERE newer.locationId=location_events.locationId AND newer.transition=location_events.transition)"
+    )
+    suspend fun pruneLocationEvents(before: Long)
+
+    @Query("DELETE FROM event_ledger WHERE at<:before AND `key` NOT LIKE '%:frequency:entry:%'")
+    suspend fun pruneEvents(before: Long)
 }
 
 @Database(
@@ -162,10 +217,32 @@ interface FlowDao {
             VariableEntity::class,
             OutboxEntity::class,
             DiagnosticEntity::class,
+            EventEntity::class,
+            LocationEventEntity::class,
         ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class FlowDatabase : RoomDatabase() {
     abstract fun dao(): FlowDao
+
+    companion object {
+        val MIGRATION_1_2 =
+            object : Migration(1, 2) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS event_ledger (`key` TEXT NOT NULL, automationId TEXT NOT NULL, at INTEGER NOT NULL, outcome TEXT NOT NULL, PRIMARY KEY(`key`))"
+                    )
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS location_events (`key` TEXT NOT NULL, locationId TEXT NOT NULL, transition TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(`key`))"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_location_events_locationId ON location_events (locationId)"
+                    )
+                    db.execSQL(
+                        "INSERT OR IGNORE INTO event_ledger SELECT eventKey, automationId, updated, state FROM executions"
+                    )
+                }
+            }
+    }
 }

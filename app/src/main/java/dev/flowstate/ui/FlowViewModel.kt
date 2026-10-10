@@ -27,6 +27,12 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
         dao.observeDiagnostics()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val message = MutableStateFlow<String?>(null)
+    val events =
+        dao.observeEvents()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val locationEvents =
+        dao.observeLocationEvents()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun work(block: suspend () -> Unit) {
         viewModelScope.launch {

@@ -45,6 +45,8 @@ class RecoveryReceiver : BroadcastReceiver() {
                 )
         )
             return
+        if (intent.action in setOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED))
+            Platform(context).invalidateGeofences()
         Platform(context).enqueue("reconcile")
         Platform(context).periodicRecovery()
     }
@@ -54,6 +56,7 @@ class GeofenceReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val event = GeofencingEvent.fromIntent(intent) ?: return
         if (event.hasError()) {
+            Platform(context).invalidateGeofences()
             Platform(context)
                 .enqueue(
                     "diagnostic",

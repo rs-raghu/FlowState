@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -16,8 +17,11 @@ import com.google.android.gms.location.*
 import dev.flowstate.MainActivity
 import dev.flowstate.data.*
 import dev.flowstate.engine.*
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 
 class Platform(private val context: Context) {
     fun granted(permission: String) =
@@ -149,14 +153,37 @@ class Platform(private val context: Context) {
         )
 
     suspend fun register(locations: List<LocationEntity>): String? {
+        val preferences =
+            context.getSharedPreferences("geofence-registration", Context.MODE_PRIVATE)
+        val configuration =
+            locations
+                .sortedBy { it.id }
+                .joinToString(";") { "${it.id}:${it.latitude}:${it.longitude}:${it.radius}" }
+        val boot = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
+        val fingerprint =
+            MessageDigest.getInstance("SHA-256")
+                .digest(
+                    "$configuration:$boot:${precise()}:${background()}:${locationEnabled()}:${playServices()}"
+                        .toByteArray()
+                )
+                .joinToString("") { "%02x".format(it) }
+        if (preferences.getString("fingerprint", null) == fingerprint) return null
         val client = LocationServices.getGeofencingClient(context)
         if (!playServices()) return "Google Play Services unavailable"
+        preferences.edit().remove("fingerprint").commit()
         try {
-            client.removeGeofences(geofenceIntent()).await()
+            withTimeout(15000) { client.removeGeofences(geofenceIntent()).await() }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            return "Geofence removal timed out; will retry"
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             return "Geofence removal failed: ${e.message}"
         }
-        if (locations.isEmpty()) return null
+        if (locations.isEmpty()) {
+            preferences.edit().putString("fingerprint", fingerprint).commit()
+            return null
+        }
         if (!precise() || !background()) return "Precise and background location required"
         if (!locationEnabled()) return "Device location is disabled"
         if (locations.size > 100) return "More than 100 locations; disable some automations"
@@ -175,18 +202,36 @@ class Platform(private val context: Context) {
                     .setNotificationResponsiveness(120000)
                     .build()
             }
-            client
-                .addGeofences(
-                    GeofencingRequest.Builder().setInitialTrigger(0).addGeofences(fences).build(),
-                    geofenceIntent(),
-                )
-                .await()
+            withTimeout(15000) {
+                client
+                    .addGeofences(
+                        GeofencingRequest.Builder()
+                            .setInitialTrigger(0)
+                            .addGeofences(fences)
+                            .build(),
+                        geofenceIntent(),
+                    )
+                    .await()
+            }
+            preferences.edit().putString("fingerprint", fingerprint).commit()
             null
         } catch (e: SecurityException) {
             "Location permission revoked: ${e.message}"
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            "Geofence registration timed out; will retry"
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             "Geofence registration failed: ${e.message}"
         }
+    }
+
+    fun invalidateGeofences() {
+        context
+            .getSharedPreferences("geofence-registration", Context.MODE_PRIVATE)
+            .edit()
+            .remove("fingerprint")
+            .commit()
     }
 
     fun cancelNotification(execution: String, token: String? = null) {

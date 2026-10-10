@@ -42,6 +42,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         singleStep: Boolean = false,
         simulationBreakpoints: Boolean = false,
         parallelDepth: Int = 0,
+        locations: Map<String, LocationState> = emptyMap(),
     ): Tick {
         var e = original
         val values = persistent.toMutableMap()
@@ -65,7 +66,8 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         else e.frames,
                 )
         }
-        fun ctx() = EvaluationContext(now, zone, e.locals, values, e.definition.id, occupancy)
+        fun ctx() =
+            EvaluationContext(now, zone, e.locals, values, e.definition.id, occupancy, locations)
         fun evaluate(n: Node, key: String) =
             Expressions.evaluate(requireNotNull(n.expressions[key]) { "Missing $key" }, ctx())
         fun set(name: String, scope: Scope, value: Value) {
@@ -97,6 +99,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 singleStep,
                 simulationBreakpoints,
                 parallelDepth,
+                locations,
             )
         try {
             require(parallelDepth <= 16) { "Parallel nesting limit exceeded" }
@@ -511,6 +514,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         singleStep: Boolean,
         simulationBreakpoints: Boolean,
         depth: Int,
+        locations: Map<String, LocationState>,
     ): Tick {
         var e = original
         var values = persistent
@@ -543,6 +547,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         singleStep = true,
                         simulationBreakpoints = simulationBreakpoints,
                         parallelDepth = depth + 1,
+                        locations = locations,
                     )
                 val child = result.execution
                 require(e.steps + child.steps - before.steps <= e.definition.maxSteps) {
