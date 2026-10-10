@@ -8,6 +8,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import dev.flowstate.data.*
 import dev.flowstate.engine.codec
 import dev.flowstate.ui.FlowViewModel
@@ -108,6 +110,24 @@ class EditorNativeTest {
         scenario!!.recreate()
         ready()
         assertTrue(js("JSON.stringify(FlowEditor.snapshot())").contains("Draft survives rotation"))
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_VIEW_RENDERER_TERMINATE)) {
+            scenario!!.onActivity { activity ->
+                val renderer =
+                    WebViewCompat.getWebViewRenderProcess(
+                        requireNotNull(web(activity.window.decorView))
+                    )
+                assertNotNull("Editor has a renderer", renderer)
+                assertTrue("Terminate renderer for recovery check", renderer!!.terminate())
+            }
+            compose.waitUntil(15000) {
+                compose.onAllNodesWithText("Reload editor").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Reload editor").performClick()
+            ready()
+            assertTrue(
+                js("JSON.stringify(FlowEditor.snapshot())").contains("Draft survives rotation")
+            )
+        }
         js("document.getElementById('save').click()")
         compose.waitUntil(15000) {
             runBlocking {
