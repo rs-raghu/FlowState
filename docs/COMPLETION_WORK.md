@@ -40,10 +40,10 @@ Migrated to SDK 37.0/target 37, AGP 9.4.1, Gradle 9.6.0, built-in Kotlin 2.4.21,
 
 Verification: 65 core tests and six editor tests pass. Debug assembly, lint (zero errors), native test compilation and optimized release assembly pass. The 23-case native suite and R8 launch await the new hosted run; no device result is inferred from compilation.
 
-## Remaining software stages
+## Final verification stages
 
-- Final resource-budget and backup-boundary audit, remaining native/platform verification.
-- Final requirement audit and APK/handoff documentation.
+- Resource-budget, backup-boundary and requirement audits are implemented below.
+- Final hosted matrix and verified APK/handoff documentation complete the software work.
 
 ## Final user checks
 
@@ -71,4 +71,14 @@ Missing expression inputs now carry their owning block ID and a concrete connect
 
 ## API 37 system-image stabilization
 
-Direct rendering alone did not fix the system image: SurfaceFlinger aborts on its graphics DMA readback assertion before APK installation. CI disables direct graphics memory and switches API 37 to three-button navigation before building/testing, avoiding the gesture-bar region sampling path. This modifies the emulator harness, not production application behavior. Shell syntax passes; hosted execution remains required.
+Direct rendering alone did not fix the system image: SurfaceFlinger aborts on its graphics DMA readback assertion. An initial workaround disabled direct graphics memory and switched navigation; execution disproved that workaround and it is superseded below.
+
+## Correct AVD metadata and graphics transport
+
+Run 38041344419 passes build and the complete API 29 native/process/permission/R8 sequence. API 36/37 restart SurfaceFlinger with direct graphics memory disabled. The emulator runner also prepends an older `cmdline-tools/latest` path after SDK setup, which can write an invalid minor-version AVD target. CI now points that path to tools 23.0, checks the exact AVD target, enables GLDirectMem and removes the navigation workaround. Shell syntax and diff checks pass; run 38041815096 provides final execution evidence.
+
+The setup action names unrecognized download revisions by their build number, so 8e4a318 corrects the symlink to `cmdline-tools/16111833` and checks its actual `Pkg.Revision=23.0`. Run 38041992652 reaches all three emulator jobs.
+
+## WebView renderer recovery
+
+The final lint review identified an unhandled renderer termination path. The editor now destroys the failed WebView, stops using its bridge, shows a reload action and restores the durable draft into a fresh WebView. The existing native editor fixture explicitly terminates the renderer on providers supporting that API, reloads and verifies the draft before saving. Older Android backup exclusion is also explicit in the manifest. Debug/lint/native compilation and signed optimized assembly pass in 1m 56s; lint has zero errors/33 warnings. Committed and pushed as 09decf5; run 38042188535 checks current-source execution.

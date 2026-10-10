@@ -17,4 +17,4 @@ The complete source specification is preserved in PROJECT_BRIEF.md. No planned f
 | 11 | File/defect audit | Findings and regression checks |
 | 12 | APK and guides | Build, lint, tests, artifact inspection |
 
-AT-001 through AT-030 will be mapped in TESTING.md to named automated tests or explicit manual procedures. Device-dependent gates remain unverified until executed on Android. The implementation status is the authoritative gap inventory.
+AT-001 through AT-030 are mapped in TESTING.md to automated evidence and physical procedures. IMPLEMENTATION_STATUS.md records implemented software. The owner completes PHONE_ACCEPTANCE.md after the final automated build/device checks; physical behavior is not inferred from emulator results.

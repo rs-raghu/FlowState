@@ -1,51 +1,32 @@
 # Verified build artifacts
 
-Verified locally on 2026-10-09. Executable source includes the bundled native examples stage built on `dd18944`; assembly preceded its commit, so embedded release VCS metadata may refer to that predecessor. Documentation changes after assembly do not change executable code. APK byte hashes below identify these exact local artifacts; a CI build uses its own debug key and may have a different byte hash.
+Verified locally on 2026-10-10 from application source committed as `09decf5`. Assembly preceded that commit, so embedded release VCS metadata can identify its predecessor. Documentation updates do not change executable code. These hashes identify the local APKs exactly; CI builds use a different debug key and can have different bytes.
 
-## Debug APK
+| Artifact | Size in bytes | SHA-256 |
+|---|---:|---|
+| Debug `app/build/outputs/apk/debug/app-debug.apk` | 49,872,259 | `4C42B90212F8A4AE6693979AF2526E6B8D18A20AADF8479634D2A907F0264E1B` |
+| Optimized test build `app/build/outputs/apk/release/app-release.apk` | 4,745,735 | `B37E334EBA15A8F276CB6A168F831FB1D61D1A4BC255B106AFAD29A03C92AC18` |
 
-Exact path:
+Both are installable and signed with the same local Android Debug RSA-2048 key. `apksigner verify --verbose --print-certs` succeeds with valid APK Signature Scheme v2. Certificate SHA-256: `cce89bfb98d8c5b6b35274514a9d49c1b7e6fcbd61a96aae2ddabaf04341e398`. Signature verification alone does not prove installation or execution.
 
-`D:\Hello World\2. Automations\FlowState\app\build\outputs\apk\debug\app-debug.apk`
+Absolute optimized APK path: `D:\Hello World\2. Automations\FlowState\app\build\outputs\apk\release\app-release.apk`. This is the recommended local artifact for final phone checks because R8 optimization matches normal release behavior. It uses a test key, not a personal production signing key. The debug APK is in the corresponding `debug` directory. These APKs share an application ID/key and replace each other when installed with `adb install -r`; make a backup first if preserving phone data matters.
 
-Size: **36,151,645 bytes**.
+The optimized artifact was built using the quoted PowerShell argument `'-Pflowstate.releaseSmoke=true'`. Normal release builds require private environment signing credentials or produce `app-release-unsigned.apk`; see [build and install](BUILD_AND_INSTALL.md). Do not install a stale unsigned output left by an earlier build.
 
-SHA-256:
+`aapt dump badging` confirms package `dev.flowstate`, versionCode 1/versionName 0.1.0, minSdk 29, target/compile SDK 37 and launchable `dev.flowstate.MainActivity`. INTERNET is absent. Automatic backup and cleartext are disabled; operational receivers are non-exported.
 
-`CAA753323DA091688C23865A82A471C07543D1D53FD091BEE2A150D436943686`
+ZIP inspection verifies local Blockly license (11,358 bytes), country map (838,726 bytes) and editor bundle (734,965 bytes). The bundled editor matches source SHA-256 `0E1FEB9C1AD245C0A7B92E595279E26E46A74B0DDF0A80F9D7B52184933B3E2B`. Editor HTML, compatibility code and media are packaged locally.
 
-`apksigner verify --verbose --print-certs` succeeded: one RSA-2048 Android Debug signer, APK Signature Scheme v2 valid. Certificate SHA-256: `cce89bfb98d8c5b6b35274514a9d49c1b7e6fcbd61a96aae2ddabaf04341e398`. This verifies the package signature; it is not an installation/launch result.
+## Verification evidence
 
-`aapt dump badging` confirms package `dev.flowstate`, versionCode 1/versionName 0.1.0, label FlowState, minSdk 29, target/compile SDK 36, launchable `dev.flowstate.MainActivity`. Permissions include location, notifications, exact scheduling, boot and library WorkManager permissions; **INTERNET is absent**. App operational receivers are non-exported, automatic backup and cleartext are disabled.
+The full local core/build command succeeded in 1m 33s. After renderer recovery, debug/lint/native compilation and optimized assembly succeeded in 1m 56s, with 118 actionable tasks:
 
-ZIP inspection confirms local editor HTML (1,446 bytes), bundle (731,388 bytes), Blockly license (11,358 bytes) and country map (838,726 bytes). The packaged bundle matches the generated source SHA-256 `5D3A67FF054570B34470C3397233581E7FCF743C1E9BB8774B305AA30D3DEB18`. Blockly media is copied locally and uses a relative media URL.
+```powershell
+.\gradlew.bat :engine:test :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleRelease '-Pflowstate.releaseSmoke=true' --max-workers=2
+```
 
-## Unsigned release APK
+74 JVM tests and six editor tests pass. Lint has zero errors and 33 warnings. Debug/native compilation and R8 optimized assembly succeed. Local reports are `engine/build/reports/tests/test/index.html` and `app/build/reports/lint-results-debug.html`.
 
-Exact path:
+Hosted run [38041344419](https://github.com/rs-raghu/FlowState/actions/runs/38041344419) passes build and the complete API 29 sequence, including normal instrumentation, external process and permission recovery, and R8 installation/launch. Earlier run [38035623654](https://github.com/rs-raghu/FlowState/actions/runs/38035623654) passes the complete API 36 sequence. Final run [38042188535](https://github.com/rs-raghu/FlowState/actions/runs/38042188535), source 09decf5, checks renderer recovery and the corrected emulator setup across API 29/36/37.0; its result is pending. See [testing](TESTING.md) for the final executed results.
 
-`D:\Hello World\2. Automations\FlowState\app\build\outputs\apk\release\app-release-unsigned.apk`
-
-Size: **4,462,845 bytes**.
-
-SHA-256:
-
-`CBE6ACF53EEA26ECF0D3266E6D52FDA54C5CBD49D030A4F6604E90B6BEB3E3C8`
-
-R8 release assembly succeeded. No signing credentials were supplied; this artifact is **unsigned** and requires signing before installation. Optional environment signing is documented in BUILD_AND_INSTALL.md. Release merged manifest also has no Internet permission and excludes the debug Compose preview activity. Release launch/minification behavior has not been tested on Android.
-
-## Build/test evidence
-
-Latest hosted source run [37971159000](https://github.com/rs-raghu/FlowState/actions/runs/37971159000) for 2f36bfd completed **successfully**: editor/core/build checks, ten standard native tests and both force-stop/reopen recovery phases on each API 29/36 image. Debug APK and both sets of device reports are attached to that run. Local APK hashes above remain the separately inspected local examples build; test/harness/documentation commits do not change its application source.
-
-Last full local Gradle invocation succeeded in 1m 51s: `:engine:test :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleRelease`, 118 actionable tasks, with two workers. 49 JVM tests pass, four frontend tests pass, ten native tests compile; nine then-current tests passed on API 29/36 in run 37967271781, and lint has zero errors/25 warnings. Kotlin formatting dry-run/fail-if-changed passes with ktfmt 0.64. See TESTING.md for exact coverage and acceptance procedures.
-
-Local reports:
-
-- `D:\Hello World\2. Automations\FlowState\engine\build\reports\tests\test\index.html`
-- `D:\Hello World\2. Automations\FlowState\app\build\reports\lint-results-debug.html`
-- `D:\Hello World\2. Automations\FlowState\engine\build\test-results\test\`
-
-GitHub Actions run [37967271781](https://github.com/rs-raghu/FlowState/actions/runs/37967271781) for `dd18944` executes the native build and API 29/36 emulator jobs. Both device jobs passed all nine then-current tests. Initial run 37965241810 exposed two defects now repaired and verified. Earlier build-only runs (including c201487) completed successfully after SDK provisioning was corrected. Each emulator job retains test reports, and the build job uploads the debug APK.
-
-No local device/AVD is available. Remote API 29/36 instrumentation installs and launches the debug app; the repaired nine-test run 37967271781 passed on both images; all ten standard tests and both force-stop/reopen phases passed on both images in run 37971159000. Physical process-death/reboot, geofence movement and battery/permission acceptance remain open. Full specification acceptance remains open. APKs and local SDK/cache files are ignored by Git; source, tests, documentation and CI are pushed to the requested repository.
+There is no local connected device or AVD. Physical movement, real reboot/OEM scheduling and prolonged battery measurements remain the user's final checks in [phone acceptance](PHONE_ACCEPTANCE.md). APKs, SDKs, caches and signing keys stay out of Git; source, tests, documentation and CI are pushed to the requested repository.

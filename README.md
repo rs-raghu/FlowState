@@ -2,21 +2,21 @@
 
 Offline-first visual personal automation for Android 10+. The app uses native Kotlin/Compose screens, a locally bundled Blockly editor, and a validated native workflow interpreter. No login, remote backend, analytics or Internet permission.
 
-**Development build:** debug and unsigned release APKs build successfully. 49 JVM tests and four Blockly tests pass, including durable parallel branches/JOIN. Ten native tests pass on both Android API 29/36 emulators, including launch, recreation, persistent checklists, concurrent questions and bundled examples. Force-stop/reopen recovery also passes on both images. Physical geofence/lifecycle acceptance and parts of the engineering brief remain open; read [status](docs/IMPLEMENTATION_STATUS.md), [limitations](docs/KNOWN_LIMITATIONS.md) and [acceptance tests](docs/TESTING.md).
+**Implementation complete; final verification in progress:** 74 JVM and six editor tests pass locally. Debug/optimized release assembly, native compilation and lint pass. Hosted Android 16 completes native tests, external process/permission recovery and optimized APK launch. Current-source API 29/36/37.0 verification is running; final phone geofence/reboot/OEM and battery checks are in [phone acceptance](docs/PHONE_ACCEPTANCE.md). Read [status](docs/IMPLEMENTATION_STATUS.md), [limitations](docs/KNOWN_LIMITATIONS.md) and [tests](docs/TESTING.md).
 
 ## What works in code
 
 - Native Dashboard, Automations, Locations, Activity and Settings.
-- Editable Blockly branches, choices/checklists, typed variables/expressions, bounded loops, calls, error handling and durable waits/deadlines.
+- Editable Blockly branches, choices/checklists, typed variables/expressions, typed lists, configurable budgets, multi-parameter calls, error handling and durable waits/deadlines.
 - Version-isolated execution snapshots, transactional variables/outbox, response tokens and recovery/deduplication.
 - Time recurrences, DST and weekly-window catch-up; geofence adapters with permission/status checks and day/overnight eligibility.
 - Isolated simulator with fake clock/variables/occupancy, steps, breakpoints, responses and effect traces.
-- Offline geographic map/pins/radius, permission health, diagnostics, themes and workspace/location backup.
+- Offline geographic map/pins/radius, permission health, diagnostics, personal defaults, editable presets, reusable checklist templates, offline help and full configuration/value/history backups.
 - [Eight editable examples](sample-workflows/README.md), built from ordinary blocks. Imported disabled; replace demo coordinates before enabling.
 
 ## Build and install
 
-Use JDK 23, Android SDK 36 and Node 24. Set untracked local.properties sdk.dir or ANDROID_HOME.
+Use JDK 23, Android SDK 37.0 (target 37) and Node 24. Set untracked local.properties sdk.dir or ANDROID_HOME.
 
 ```powershell
 cd blockly-editor
@@ -34,4 +34,4 @@ Debug output is app/build/outputs/apk/debug/app-debug.apk. `scripts/verify.ps1` 
 
 [User guide](docs/USER_GUIDE.md) · [Block reference](docs/BLOCK_REFERENCE.md) · [Workflow language](docs/WORKFLOW_LANGUAGE.md) · [Architecture](docs/ARCHITECTURE.md) · [Developer guide](docs/DEVELOPER_GUIDE.md) · [Scheduling](docs/TRIGGER_SCHEDULING.md) · [Permissions](docs/ANDROID_PERMISSIONS.md) · [Security](docs/SECURITY.md) · [Repository explanation — Report A](docs/REPOSITORY_EXPLANATION.md) · [Defect/risk audit — Report B](docs/FINAL_AUDIT.md) · [Original brief](docs/PROJECT_BRIEF.md).
 
-The current BRANCHES block runs A then B; it does not provide parallel/JOIN. Geofences require Google Play Services and precise/background location, and Android/OEM background restrictions can delay execution. These limits are documented alongside the remaining implementation requirements.
+PARALLEL provides durable independent branches and JOIN. Geofences require Google Play Services and precise/background location, and Android/OEM background restrictions can delay execution. These limits are documented alongside the remaining implementation requirements.

@@ -1,20 +1,13 @@
 # Development
 
-Requirements: JDK 23 for the configured Gradle toolchain (emits JVM 17 bytecode), Android SDK 36, build tools, Node 24 (verified) and npm. The Gradle wrapper is pinned to 8.13; AGP 8.13.2, Kotlin/Compose compiler 2.2.21 and Compose BOM 2025.10.00 form the verified SDK-36 compatibility set. Newer stable dependency releases exist; a current SDK-37/AGP-9 migration has not been completed.
+Use JDK 23 (JVM 17 output), Node 24, SDK platform `platforms;android-37.0` and build tools 37.0.0. Compile SDK uses the AGP minor-level DSL `release(37) { minorApiLevel = 0 }`; target is 37, minimum 29. Gradle wrapper 9.6.0 is SHA-256 pinned. AGP 9.4.1 uses built-in Kotlin 2.4.21; KSP 2.3.12 and Hilt 2.60.1 replace kapt/manual injection. Compose BOM is 2026.09.00, Room 2.8.5, Blockly 13.3.0 and esbuild 0.28.2. Pins are in the build files/lockfile.
 
-Set `sdk.dir` in untracked local.properties or ANDROID_HOME. On this machine the SDK is in `.tools/android-sdk`. Do not share or commit signing credentials. Run one build at a time to avoid competing writes to task output.
+Set untracked `local.properties` sdk.dir or ANDROID_HOME. Run `scripts/verify.ps1` for npm ci/tests/bundle, core tests, debug/lint/native compilation and unsigned R8 assembly. Run one Gradle build at a time and avoid changing source while compile/lint reads it. Host-specific ignored `.tools` is not a runtime dependency.
 
-```
-cd blockly-editor
-npm ci
-npm test
-npm run build
-cd ..
-./gradlew :engine:test :app:assembleDebug :app:lintDebug
-./gradlew :app:compileDebugAndroidTestKotlin
-./gradlew connectedDebugAndroidTest
-```
+Generated editor assets are committed. Regenerate after changing editor/catalogue/compat using `npm run build` inside blockly-editor. Blockly produces data only. Native Compiler, Runtime and Expressions define executable semantics; add blocks with validation, resource bounds and meaningful roundtrip/runtime coverage. Simulator never invokes DAO/platform operations.
 
-The final command needs a connected Android device/emulator. Generated editor assets are committed for offline/reproducible APK builds; regenerate them after changing catalogue/editor code. `npm ci` uses the lockfile. Build outputs are ignored. Room exports schema JSON; preserve schema history and add explicit migrations on version increments. Core tests are in engine/src/test; native database tests are in app/src/androidTest.
+Hilt AppModule owns singleton database/coordinator; MainActivity is an entry point and FlowViewModel is injected. Coordinator serializes mutations with a Mutex and Room transactions. Preserve exported schemas 1–5; add a new version and explicit migration for schema changes. Pending/old execution definitions remain immutable.
 
-Add blocks by updating catalogue, compiler validation, native runtime/expression semantics, security bounds, roundtrip/runtime tests and documentation together. Never put unsupported operations in the toolbox. Dependencies are explicit via the application container rather than Hilt; see DECISIONS.md. Production configuration, snapshots and simulation state must remain separate.
+`connectedDebugAndroidTest` requires a device. `scripts/test-device.sh` runs hosted normal/native external process and permission phases, then R8 smoke installation. External fixtures require their phase argument and are excluded/skipped from ordinary discovery. The test dependency explicitly selects Espresso 3.7.0 rather than Compose's older transitive version for SDK 37 compatibility.
+
+Signing credentials are environment-only; see BUILD_AND_INSTALL.md. APK integrity/metadata/results belong in BUILD_ARTIFACTS.md. Commit and push each completed stage/improvement as the owner requested.
