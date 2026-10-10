@@ -24,12 +24,28 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 
 class Platform(private val context: Context) {
+    var notificationFailure: String? = null
+        private set
+
     fun granted(permission: String) =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
+    private fun notificationAppOpAllowed(): Boolean {
+        val mode =
+            context
+                .getSystemService(AppOpsManager::class.java)
+                .checkOpNoThrow(
+                    "android:post_notification",
+                    android.os.Process.myUid(),
+                    context.packageName,
+                )
+        return mode == AppOpsManager.MODE_ALLOWED || mode == AppOpsManager.MODE_DEFAULT
+    }
+
     fun notificationsAllowed() =
         (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)) &&
-            NotificationManagerCompat.from(context).areNotificationsEnabled()
+            NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+            notificationAppOpAllowed()
 
     fun precise() = granted(Manifest.permission.ACCESS_FINE_LOCATION)
 
@@ -291,6 +307,7 @@ class Platform(private val context: Context) {
     }
 
     fun notification(execution: String, effect: Effect): Boolean {
+        notificationFailure = null
         if (effect.kind == "cancelOwned") {
             if (effect.notification.target.isBlank()) cancelAllExecutionNotifications(execution)
             else
@@ -302,8 +319,25 @@ class Platform(private val context: Context) {
             cancelNotification(execution, effect.cancelToken.ifBlank { null })
             return true
         }
-        if (!notificationsAllowed()) return false
+        if (!notificationsAllowed()) {
+            notificationFailure = "Notification permission denied"
+            return false
+        }
         val manager = context.getSystemService(NotificationManager::class.java)
+        val tag =
+            effect.interaction?.let { "$execution:question:${it.token}" }
+                ?: "$execution:message:${Uri.encode(effect.notification.target.ifBlank { effect.id })}"
+        val active = manager.activeNotifications
+        if (active.none { it.tag == tag } && active.size >= 32) {
+            val message =
+                active.filter { it.tag?.contains(":message:") == true }.minByOrNull { it.postTime }
+            if (message != null) manager.cancel(message.tag, message.id)
+            else {
+                notificationFailure =
+                    "Notification capacity reached (32); respond to pending questions in Activity"
+                return false
+            }
+        }
         val config = effect.notification
         val channel = "workflows-${config.channel}"
         val importance =
@@ -396,6 +430,7 @@ class Platform(private val context: Context) {
                 )
             true
         } catch (_: SecurityException) {
+            notificationFailure = "Notification permission denied"
             false
         }
     }

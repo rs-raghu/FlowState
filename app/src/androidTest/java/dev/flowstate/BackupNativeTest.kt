@@ -21,6 +21,77 @@ class BackupNativeTest {
             .build()
 
     @Test
+    fun backupLargerThanWorkspaceLimitRoundtripsWithoutWeakeningWorkspaceBounds() = runBlocking {
+        val db = database()
+        val restored = database()
+        try {
+            val source =
+                FlowViewModel.template("Blank message")
+                    .replace("Your workflow is running", "a".repeat(12000))
+            val backup =
+                Backup(
+                    automations =
+                        List(201) {
+                            BackupAutomation(UUID.randomUUID().toString(), "Workflow $it", source)
+                        },
+                    locations = emptyList(),
+                )
+            val data = codec.encodeToString(backup)
+            assertTrue("Large backup fixture", data.toByteArray(Charsets.UTF_8).size > 2_000_000)
+            assertEquals(201, Backups(db).import(data))
+            assertEquals(201, Backups(restored).import(Backups(db).export()))
+        } finally {
+            db.close()
+            restored.close()
+        }
+    }
+
+    @Test
+    fun mergeCompilesNewWorkflowsWithTheRetainedTemplate() = runBlocking {
+        val db = database()
+        try {
+            val current =
+                ChecklistTemplate(
+                    UUID.randomUUID().toString(),
+                    "Essentials",
+                    listOf(ChecklistItem("Current item")),
+                )
+            db.dao()
+                .saveChecklist(
+                    ChecklistEntity(current.id, current.name, codec.encodeToString(current), 0)
+                )
+            val incoming =
+                current.copy(
+                    id = UUID.randomUUID().toString(),
+                    items = listOf(ChecklistItem("Incoming item")),
+                )
+            val id = UUID.randomUUID().toString()
+            val source =
+                """{"blocks":{"blocks":[{"type":"fs_trigger","id":"trigger","next":{"block":{"type":"fs_checklist","id":"check","fields":{"TEMPLATE":"${incoming.id}"}}}}]}}"""
+            Backups(db)
+                .import(
+                    codec.encodeToString(
+                        Backup(
+                            automations = listOf(BackupAutomation(id, "New workflow", source)),
+                            locations = emptyList(),
+                            templates = listOf(incoming),
+                        )
+                    ),
+                    "merge",
+                )
+            val definition =
+                codec.decodeFromString<Definition>(db.dao().automation(id)!!.definition)
+            assertEquals(
+                "Current item",
+                definition.checklists.getValue(current.id).items.single().label,
+            )
+            assertEquals(1, db.dao().checklists().size)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun fullBackupRestoresTemplatesValuesLedgerAndArchivesPendingRun() = runBlocking {
         val db = database()
         val restored = database()

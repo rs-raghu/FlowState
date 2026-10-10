@@ -63,6 +63,10 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
     suspend fun reconcile() = operations.withLock { reconcileInternal() }
 
     suspend fun clearHistory() = operations.withLock {
+        dao.observeExecutions()
+            .first()
+            .filter { it.state in Runtime.terminal.map { state -> state.name } }
+            .forEach { platform.cancelAllExecutionNotifications(it.id) }
         db.withTransaction {
             dao.pruneExecutions(Long.MAX_VALUE)
             dao.clearDiagnostics()
@@ -552,13 +556,16 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
                             )
                     }
                 val tick =
-                    rt.tick(
-                        e,
-                        now,
-                        ZoneId.systemDefault().id,
+                    ResourceLimits.bound(
+                        rt.tick(
+                            e,
+                            now,
+                            ZoneId.systemDefault().id,
+                            persistent,
+                            occupancy,
+                            locations = locationStates,
+                        ),
                         persistent,
-                        occupancy,
-                        locations = locationStates,
                     )
                 dao.saveExecution(entity(tick.execution, row.automationId, row.eventKey))
                 tick.persistent.forEach { (key, value) ->
@@ -713,7 +720,7 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
                     DiagnosticEntity(
                         at = now,
                         message =
-                            "Notification permission denied; interaction remains available in Activity",
+                            "${platform.notificationFailure ?: "Notification unavailable"}; interaction remains available in Activity",
                     )
                 )
             dao.deleteOutbox(row.id)

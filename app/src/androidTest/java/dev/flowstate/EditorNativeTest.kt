@@ -115,6 +115,7 @@ class EditorNativeTest {
                     true
             }
         }
+        compose.waitUntil(15000) { EditorDrafts(app).source(id) == null }
         assertNull(EditorDrafts(app).source(id))
         val saved = runBlocking { app.database.dao().automation(id)!!.workspace }
         js("FlowBridge.postMessage('{malformed')")

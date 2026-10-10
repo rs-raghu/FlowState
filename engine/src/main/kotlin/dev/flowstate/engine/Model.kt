@@ -145,6 +145,8 @@ data class Definition(
     val trigger: Trigger = Trigger(),
     val maxSteps: Int = 10000,
     val maxIterations: Int = 1000,
+    val maxBurst: Int = 100,
+    val notificationRate: Int = 30,
     val checklists: Map<String, ChecklistTemplate> = emptyMap(),
 )
 
@@ -243,6 +245,7 @@ data class Execution(
     val deadline: Long? = null,
     val branches: List<Execution> = emptyList(),
     val branchTurn: Int = 0,
+    val notificationTimes: List<Long> = emptyList(),
 )
 
 fun Execution.capturedDefinitions(): List<Definition> =

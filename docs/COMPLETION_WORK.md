@@ -52,3 +52,9 @@ Actual phone geofence entry/exit/dwell, permission and location-service changes,
 ## Emulator startup repair
 
 Hosted Android 10 and 16 each passed 21 of 23 native tests. The editor initialized its JavaScript object but the native workspace handshake did not complete during the test; startup now has an idempotent trusted-page callback and immediate main dispatcher. Notification denial tests revoke the runtime permission on modern Android and set both package/UID app ops on Android 10. Android 17 requires a larger emulator data partition; CI allocates 8 GB. Native test compilation passes; execution awaits the next hosted run.
+
+## Resource and backup boundaries
+
+Implemented editor-configurable step/loop/burst and per-minute notification budgets, persisted across waits and shared across parallel branches/calls. Captured libraries are limited to 256 KB, snapshots to 2 MB and aggregate persistent values to 1 MB/10,000 entries. Overflow records a compact FAILED snapshot, drops new effects/value writes and cancels pending questions. Platform notification capacity keeps pending questions accessible in Activity and reports a truthful diagnostic. Clearing terminal history also removes its owned message notifications.
+
+Fixed 16 MB backup envelope handling while retaining each workspace/snapshot’s 2 MB UTF-8/depth boundary, template precedence during merge, and export/import count compatibility. Added large-backup and retained-template native regressions. Updated verified Play Services Location 21.4.0 and esbuild 0.28.2; 72 core and six editor tests pass. Debug/lint/native compilation and optimized unsigned assembly passed before the final harness changes. Android 17 exposed Compose’s old transitive Espresso 3.5.0; explicitly select stable 3.7.0 for its supported input manager. Permission revocation runs outside instrumentation because it terminates the tested process.

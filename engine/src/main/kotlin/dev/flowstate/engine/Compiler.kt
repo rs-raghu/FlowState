@@ -440,13 +440,21 @@ object Compiler {
                     nodes = nodes,
                     variables = vars,
                     trigger = trigger,
+                    maxSteps = (f["MAXSTEPS"] ?: "10000").toInt(),
+                    maxIterations = (f["MAXITERATIONS"] ?: "1000").toInt(),
+                    maxBurst = (f["BURST"] ?: "100").toInt(),
+                    notificationRate = (f["RATE"] ?: "30").toInt(),
                     checklists =
                         templates.filterKeys { template ->
                             nodes.any { it.fields["TEMPLATE"] == template }
                         },
                 )
 
-            issues += validate(d, locations, workflows)
+            issues +=
+                validate(d, locations, workflows).map {
+                    if (it.block.isBlank()) it.copy(block = top["id"]!!.jsonPrimitive.content)
+                    else it
+                }
 
             if (issues.isNotEmpty()) throw ValidationException(issues)
 
@@ -484,7 +492,9 @@ object Compiler {
             d.schema != 1 ||
                 d.nodes.size > 2000 ||
                 d.maxSteps !in 1..10000 ||
-                d.maxIterations !in 1..1000
+                d.maxIterations !in 1..1000 ||
+                d.maxBurst !in 1..100 ||
+                d.notificationRate !in 1..120
         )
             issue("Unsupported schema or unsafe budget")
 

@@ -18,7 +18,7 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The process recovery test requires two separate invocations and an external force-stop.
-        testInstrumentationRunnerArguments["notClass"] = "dev.flowstate.ProcessRecoveryTest"
+        testInstrumentationRunnerArguments["notClass"] = "dev.flowstate.ProcessRecoveryTest,dev.flowstate.PermissionRecoveryTest"
     }
     buildFeatures { compose = true; buildConfig = true }
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
@@ -58,11 +58,12 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("androidx.webkit:webkit:1.17.1")
     implementation("androidx.core:core-ktx:1.19.1")
-    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.android.gms:play-services-location:21.4.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.room:room-testing:2.8.5")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

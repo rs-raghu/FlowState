@@ -65,6 +65,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                         }
                     }
                 var editorInitialized = false
+                var lastSavedWorkspace: JsonElement? = null
                 fun receiveEditorMessage(data: String) {
                     if (data.length > 2_000_000) {
                         vm.message.value = "Editor message exceeds 2 MB"
@@ -73,8 +74,12 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                     try {
                         val immediate = codec.parseToJsonElement(SafeInput.json(data)).jsonObject
                         if (immediate["action"]?.jsonPrimitive?.content == "dirty") {
-                            dirty = true
-                            immediate["workspace"]?.let { drafts.save(a.id, it.toString()) }
+                            immediate["workspace"]?.let {
+                                if (it != lastSavedWorkspace) {
+                                    dirty = true
+                                    drafts.save(a.id, it.toString())
+                                }
+                            }
                             return
                         }
                     } catch (e: Exception) {
@@ -170,6 +175,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                                 if (action == "copy") a.name + " copy" else a.name,
                                                 source,
                                             )
+                                            lastSavedWorkspace = payload["workspace"]
                                             dirty = false
                                             drafts.clear(a.id)
                                             evaluateJavascript("FlowEditor.saved()", null)
@@ -250,7 +256,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                     // evaluateJavascript runs only in the top-level trusted document. No JavaScript
                     // interface is exposed to frames. Polling exists only while this editor is
                     // resumed.
-                    scope.launch {
+                    scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
                         lifecycleOwner.lifecycle.repeatOnLifecycle(
                             androidx.lifecycle.Lifecycle.State.RESUMED
                         ) {

@@ -1,6 +1,7 @@
 package dev.flowstate.engine
 
 import java.util.UUID
+import kotlinx.serialization.encodeToString
 
 class Runtime(private val resolve: (String) -> Definition? = { null }) {
     var interactionToken: () -> String = { UUID.randomUUID().toString() }
@@ -12,6 +13,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         templates: Map<String, ChecklistTemplate> = emptyMap(),
     ): Execution {
         val library = mutableMapOf<String, Definition>()
+        var capturedBytes = 0
         fun captured(definition: Definition) =
             definition.copy(
                 checklists =
@@ -20,6 +22,9 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                     }
             )
         fun capture(definition: Definition, path: Set<String>) {
+            capturedBytes +=
+                codec.encodeToString(captured(definition)).toByteArray(Charsets.UTF_8).size
+            require(capturedBytes <= 256_000) { "Captured workflow library exceeds 256 KB" }
             require(path.size < 8 && definition.id !in path) {
                 "Recursive or excessive workflow dependency"
             }
@@ -57,6 +62,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         simulationBreakpoints: Boolean = false,
         parallelDepth: Int = 0,
         locations: Map<String, LocationState> = emptyMap(),
+        notificationLimit: Int = 120,
     ): Tick {
         var e = original
         val values = persistent.toMutableMap()
@@ -68,6 +74,20 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 }
         }
         val effects = mutableListOf<Effect>()
+        fun notification() {
+            val times = e.notificationTimes.filter { it <= now && now - it < 60_000 }
+            val limit =
+                minOf(
+                    notificationLimit,
+                    (listOf(e.definition) + e.frames.mapNotNull { it.definition }).minOf {
+                        it.notificationRate
+                    },
+                )
+            require(times.size < limit) {
+                "Notification frequency budget exhausted ($limit per minute)"
+            }
+            e = e.copy(notificationTimes = times + now)
+        }
         fun record(node: String, detail: String) {
             e = e.copy(trace = (e.trace + Trace(now, node, detail)).takeLast(1000))
         }
@@ -131,6 +151,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 simulationBreakpoints,
                 parallelDepth,
                 locations,
+                minOf(notificationLimit, e.definition.notificationRate),
             )
         try {
             require(parallelDepth <= 16) { "Parallel nesting limit exceeded" }
@@ -141,6 +162,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         interaction.reminders == 0 &&
                         interaction.deadline?.let { now < it } != false
                 ) {
+                    notification()
                     interaction =
                         interaction.copy(reminderAt = null, reminders = 1, dismissed = false)
                     e = e.copy(interaction = interaction).let { it.copy(wakeAt = it.nextWake()) }
@@ -177,7 +199,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
             while (
                 e.state == State.RUNNING &&
                     e.branches.isEmpty() &&
-                    slice < if (singleStep) 1 else 100
+                    slice < if (singleStep) 1 else e.definition.maxBurst
             ) {
                 if (e.cursor == null) {
                     val frame = e.frames.lastOrNull()
@@ -217,6 +239,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 when (n.op) {
                     "message",
                     "notifyUpdate" -> {
+                        notification()
                         effects +=
                             Effect(
                                 "${e.id}:${e.steps}",
@@ -255,6 +278,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                     }
                     "ask",
                     "checklist" -> {
+                        notification()
                         val kind = if (n.op == "checklist") "checklist" else f("KIND", "choice")
                         val template =
                             f("TEMPLATE")
@@ -623,6 +647,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         simulationBreakpoints: Boolean,
         depth: Int,
         locations: Map<String, LocationState>,
+        notificationLimit: Int,
     ): Tick {
         var e = original
         var values = persistent
@@ -639,7 +664,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         try {
             require(depth <= 16 && count(e) <= 64) { "Parallel nesting or branch limit exceeded" }
             var slice = 0
-            while (slice < if (singleStep) 1 else 100) {
+            while (slice < if (singleStep) 1 else e.definition.maxBurst) {
                 val index =
                     e.branches.indices
                         .map { (e.branchTurn + it) % e.branches.size }
@@ -647,7 +672,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 val before = e.branches[index]
                 val result =
                     tick(
-                        before,
+                        before.copy(notificationTimes = e.notificationTimes),
                         now,
                         zone,
                         values,
@@ -656,6 +681,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         simulationBreakpoints = simulationBreakpoints,
                         parallelDepth = depth + 1,
                         locations = locations,
+                        notificationLimit = notificationLimit,
                     )
                 val child = result.execution
                 require(e.steps + child.steps - before.steps <= e.definition.maxSteps) {
@@ -668,6 +694,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 e =
                     e.copy(
                         branches = children,
+                        notificationTimes = child.notificationTimes,
                         branchTurn = (index + 1) % children.size,
                         steps = e.steps + child.steps - before.steps,
                         trace =

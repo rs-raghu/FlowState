@@ -42,9 +42,17 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                         db.dao().checklists().map {
                             codec.decodeFromString<ChecklistTemplate>(it.payload)
                         },
-                    variables = db.dao().variables(),
+                    variables =
+                        db.dao().variables().also {
+                            require(it.size <= 10000) { "Backup exceeds 10,000 stored variables" }
+                        },
                     history = db.dao().observeExecutions().first(),
-                    events = db.dao().events(),
+                    events =
+                        db.dao().events().also {
+                            require(it.size <= 100000) {
+                                "Backup exceeds 100,000 deduplication records"
+                            }
+                        },
                     locationEvents = db.dao().observeLocationEvents().first(),
                     settings = preferences?.snapshot() ?: emptyMap(),
                     automations =
@@ -76,7 +84,7 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
     suspend fun import(source: String, mode: String = "new"): Int {
         require(mode in setOf("new", "merge", "overwrite"))
         require(source.toByteArray(Charsets.UTF_8).size <= 16_000_000) { "Backup exceeds 16 MB" }
-        var backup = codec.decodeFromString<Backup>(SafeInput.json(source))
+        var backup = codec.decodeFromString<Backup>(SafeInput.json(source, 16_000_000))
         val remap = mutableMapOf<String, String>()
         if (mode == "merge") {
             val automations = db.dao().automations().associateBy { it.name }
@@ -122,6 +130,12 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                 backup.events.size <= 100000 &&
                 backup.locationEvents.size <= 200
         )
+        require(
+            codec.encodeToString(backup.variables).toByteArray(Charsets.UTF_8).size <=
+                ResourceLimits.VARIABLE_BYTES
+        ) {
+            "Persistent variable storage exceeds 1 MB"
+        }
         require(backup.templates.map { it.id }.toSet().size == backup.templates.size)
         backup.templates.forEach { t ->
             java.util.UUID.fromString(t.id)
@@ -176,9 +190,16 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                             (dao.automation(a.id)?.version ?: 0) + 1,
                             locations,
                             workflows,
-                            (dao.checklists().associate {
-                                it.id to codec.decodeFromString<ChecklistTemplate>(it.payload)
-                            } + backup.templates.associateBy { it.id }),
+                            if (mode == "merge")
+                                backup.templates.associateBy { it.id } +
+                                    dao.checklists().associate {
+                                        it.id to
+                                            codec.decodeFromString<ChecklistTemplate>(it.payload)
+                                    }
+                            else
+                                dao.checklists().associate {
+                                    it.id to codec.decodeFromString<ChecklistTemplate>(it.payload)
+                                } + backup.templates.associateBy { it.id },
                         )
                 }
         val definitions = compiled.associate { it.first.id to it.second }
