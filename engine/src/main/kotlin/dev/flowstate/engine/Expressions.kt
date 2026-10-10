@@ -226,7 +226,9 @@ object Expressions {
             }
             "occupancy" -> {
                 val v = c.occupancy[e.name]
-                Value.string(if (v == null || c.now - v.second > 3600000) "UNKNOWN" else v.first)
+                Value.string(
+                    if (v == null || c.now - v.second !in 0..3600000) "UNKNOWN" else v.first
+                )
             }
             "latitude",
             "longitude",
@@ -255,7 +257,14 @@ object Expressions {
             "dwellDuration" ->
                 c.locations[e.name]?.let {
                     val entered = it.entered
-                    if (entered == null || (it.exited ?: Long.MIN_VALUE) >= entered) Value.NULL
+                    if (
+                        entered == null ||
+                            (it.exited ?: Long.MIN_VALUE) >= entered ||
+                            c.occupancy[e.name]?.let { o ->
+                                o.first != "INSIDE" || c.now - o.second !in 0..3600000
+                            } != false
+                    )
+                        Value.NULL
                     else Value(Type.DURATION, (c.now - entered).coerceAtLeast(0).toString())
                 } ?: Value.NULL
             else -> error("Unsupported expression ${e.op}")

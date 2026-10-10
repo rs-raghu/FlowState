@@ -11,6 +11,7 @@ data class SimulationSnapshot(
     val occupancy: Map<String, Pair<String, Long>>,
     val tokenCounter: Int,
     val permissions: Map<String, Boolean>,
+    val locations: Map<String, LocationState>,
 )
 
 /** All adapters and state belong to this instance. There is no Android/database dependency. */
@@ -20,6 +21,7 @@ class Simulation(
     now: Long,
     zone: String,
     initial: Execution? = null,
+    initialLocations: Map<String, LocationState> = emptyMap(),
 ) {
     private var tokenCounter = 0
     private val runtime = Runtime { id ->
@@ -36,6 +38,7 @@ class Simulation(
         private set
 
     var occupancy: Map<String, Pair<String, Long>> = emptyMap()
+    var locations = initialLocations.toMap()
     var breakpoints: Set<String> = emptySet()
     var permissions =
         mapOf(
@@ -67,6 +70,7 @@ class Simulation(
                 occupancy.toMap(),
                 tokenCounter,
                 permissions.toMap(),
+                locations.toMap(),
             )
         if (history.size > 200) history.removeAt(0)
     }
@@ -81,6 +85,7 @@ class Simulation(
         occupancy = s.occupancy
         tokenCounter = s.tokenCounter
         permissions = s.permissions
+        locations = s.locations
         paused = null
         while (history.lastIndex > index) history.removeAt(history.lastIndex)
     }
@@ -133,6 +138,7 @@ class Simulation(
                 occupancy,
                 singleStep = true,
                 simulationBreakpoints = true,
+                locations = locations,
             )
         execution = result.execution
         values = result.persistent
@@ -203,6 +209,22 @@ class Simulation(
         capture()
     }
 
+    fun location(id: String, latitude: Double, longitude: Double, radius: Double) {
+        require(
+            id.isNotBlank() &&
+                latitude.isFinite() &&
+                longitude.isFinite() &&
+                latitude in -90.0..90.0 &&
+                longitude in -180.0..180.0 &&
+                radius in 100.0..100000.0
+        )
+        val old = locations[id] ?: LocationState(latitude, longitude, radius)
+        locations =
+            locations +
+                (id to old.copy(latitude = latitude, longitude = longitude, radius = radius))
+        capture()
+    }
+
     fun event(at: Long, kind: String, payload: String) {
         require(at >= now) { "Events must be chronological; use replay to move back" }
         now = at
@@ -210,6 +232,15 @@ class Simulation(
             "enter",
             "exit",
             "dwell" -> {
+                val old = locations[payload] ?: LocationState(0.0, 0.0, 150.0)
+                locations =
+                    locations +
+                        (payload to
+                            when (kind) {
+                                "enter" -> old.copy(entered = at)
+                                "exit" -> old.copy(exited = at)
+                                else -> old.copy(dwell = at)
+                            })
                 occupancy =
                     occupancy + (payload to ((if (kind == "exit") "OUTSIDE" else "INSIDE") to at))
                 val eligible =

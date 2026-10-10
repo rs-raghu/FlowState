@@ -34,6 +34,8 @@ data class LocationEntity(
     val occupancy: String = "UNKNOWN",
     val eventAt: Long = 0,
     val registration: String = "Not registered",
+    @ColumnInfo(defaultValue = "120") val dwellSeconds: Int = 120,
+    @ColumnInfo(defaultValue = "30") val cooldownSeconds: Int = 30,
 )
 
 @Entity(
@@ -147,6 +149,15 @@ interface FlowDao {
 
     @Query("DELETE FROM locations WHERE id=:id") suspend fun deleteLocation(id: String)
 
+    @Query("DELETE FROM location_events WHERE locationId=:id")
+    suspend fun deleteLocationEvents(id: String)
+
+    @Query("DELETE FROM event_ledger WHERE automationId=:id") suspend fun deleteEvents(id: String)
+
+    @Query("DELETE FROM variables") suspend fun resetVariables()
+
+    @Query("DELETE FROM diagnostics") suspend fun clearDiagnostics()
+
     @Query("SELECT * FROM executions WHERE id=:id")
     suspend fun execution(id: String): ExecutionEntity?
 
@@ -220,7 +231,9 @@ interface FlowDao {
     )
     suspend fun pruneLocationEvents(before: Long)
 
-    @Query("DELETE FROM event_ledger WHERE at<:before AND `key` NOT LIKE '%:frequency:entry:%'")
+    @Query(
+        "DELETE FROM event_ledger WHERE at<:before AND (`key` NOT LIKE '%:frequency:entry:%' OR at < (SELECT MAX(newer.at) FROM event_ledger AS newer WHERE newer.automationId=event_ledger.automationId AND newer.`key` LIKE '%:frequency:entry:%'))"
+    )
     suspend fun pruneEvents(before: Long)
 
     @Query("SELECT * FROM checklist_templates ORDER BY name")
@@ -246,13 +259,24 @@ interface FlowDao {
             LocationEventEntity::class,
             ChecklistEntity::class,
         ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class FlowDatabase : RoomDatabase() {
     abstract fun dao(): FlowDao
 
     companion object {
+        val MIGRATION_3_4 =
+            object : Migration(3, 4) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE locations ADD COLUMN dwellSeconds INTEGER NOT NULL DEFAULT 120"
+                    )
+                    db.execSQL(
+                        "ALTER TABLE locations ADD COLUMN cooldownSeconds INTEGER NOT NULL DEFAULT 30"
+                    )
+                }
+            }
         val MIGRATION_2_3 =
             object : Migration(2, 3) {
                 override fun migrate(db: SupportSQLiteDatabase) {

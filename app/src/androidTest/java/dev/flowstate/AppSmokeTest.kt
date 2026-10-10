@@ -67,6 +67,35 @@ class AppSmokeTest {
     }
 
     @Test
+    fun largerTextKeepsNavigationAndSettingsActionsAccessible() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun shell(command: String) =
+            automation.executeShellCommand(command).use {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it)
+                    .bufferedReader()
+                    .readText()
+                    .trim()
+            }
+        val old = shell("settings get system font_scale")
+        try {
+            shell("settings put system font_scale 1.6")
+            open()
+            compose.onNodeWithText("Create automation").assertIsDisplayed()
+            navigate("Settings")
+            compose.onNodeWithText("Personal defaults").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Test notification").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Copy diagnostic report").performScrollTo().assertIsDisplayed()
+            scenario!!.recreate()
+            compose.onNodeWithText("Copy diagnostic report").performScrollTo().assertIsDisplayed()
+        } finally {
+            shell(
+                "settings put system font_scale " +
+                    old.takeIf { it.toFloatOrNull() != null }.orEmpty().ifEmpty { "1.0" }
+            )
+        }
+    }
+
+    @Test
     fun checklistProgressSurvivesRecreationAndDuplicateResponseIsIgnored() {
         val id = UUID.randomUUID().toString()
         automationId = id

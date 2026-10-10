@@ -16,7 +16,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.*
 import com.google.android.gms.location.*
@@ -29,18 +34,33 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.decodeFromString
 
-private fun date(at: Long) =
-    if (at == 0L) "Never"
+private val LocalTimeFormat = staticCompositionLocalOf { "system" }
+
+@Composable
+private fun date(at: Long): String {
+    val setting = LocalTimeFormat.current
+    val use24 =
+        setting == "24" ||
+            setting == "system" &&
+                android.text.format.DateFormat.is24HourFormat(LocalContext.current)
+    return if (at == 0L) "Never"
     else
         Instant.ofEpochMilli(at)
             .atZone(ZoneId.systemDefault())
-            .toLocalDateTime()
-            .toString()
-            .replace('T', ' ')
+            .format(
+                java.time.format.DateTimeFormatter.ofPattern(
+                    if (use24) "yyyy-MM-dd HH:mm" else "yyyy-MM-dd hh:mm a"
+                )
+            )
+}
 
 @Composable
 private fun Title(title: String, body: String) {
-    Text(title, style = MaterialTheme.typography.headlineMedium)
+    Text(
+        title,
+        style = MaterialTheme.typography.headlineMedium,
+        modifier = Modifier.semantics { heading() },
+    )
     Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
@@ -69,10 +89,13 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
     val context = LocalContext.current
     val prefs = remember { Preferences(context) }
     val theme by prefs.theme.collectAsStateWithLifecycle("system")
+    val defaults by prefs.options.collectAsStateWithLifecycle(Preferences.defaults)
     val onboarded by prefs.onboarded.collectAsStateWithLifecycle(true)
     val dark = theme == "dark" || theme == "system" && isSystemInDarkTheme()
     val scheme =
-        if (dark) darkColorScheme(primary = Color(0xFFACE0B5))
+        if (Build.VERSION.SDK_INT >= 31 && defaults["dynamicColor"] == "true") {
+            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        } else if (dark) darkColorScheme(primary = Color(0xFFACE0B5))
         else lightColorScheme(primary = Color(0xFF366A47), surface = Color(0xFFF7FAF5))
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
@@ -94,164 +117,180 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
     }
     LaunchedEffect(initialExecution) { if (initialExecution != null) nav.navigate("activity") }
     MaterialTheme(colorScheme = scheme) {
-        Scaffold(
-            snackbarHost = { SnackbarHost(snack) },
-            bottomBar = {
-                if (route?.startsWith("editor") != true)
-                    NavigationBar {
-                        listOf(
-                                "dashboard" to "⌂",
-                                "automations" to "⚡",
-                                "locations" to "◎",
-                                "activity" to "◷",
-                                "settings" to "⚙",
-                            )
-                            .forEach { (name, icon) ->
-                                NavigationBarItem(
-                                    selected = route == name,
-                                    onClick = {
-                                        nav.navigate(name) {
-                                            popUpTo("dashboard") { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    },
-                                    icon = { Text(icon) },
-                                    label = {
-                                        Text(
-                                            name.replaceFirstChar(Char::uppercase),
-                                            style = MaterialTheme.typography.labelSmall,
-                                        )
-                                    },
+        CompositionLocalProvider(LocalTimeFormat provides defaults.getValue("timeFormat")) {
+            Scaffold(
+                snackbarHost = { SnackbarHost(snack) },
+                bottomBar = {
+                    if (route?.startsWith("editor") != true)
+                        NavigationBar {
+                            listOf(
+                                    "dashboard" to "⌂",
+                                    "automations" to "⚡",
+                                    "locations" to "◎",
+                                    "activity" to "◷",
+                                    "settings" to "⚙",
                                 )
-                            }
-                    }
-            },
-        ) { padding ->
-            Surface(Modifier.padding(padding).fillMaxSize()) {
-                NavHost(nav, startDestination = "dashboard") {
-                    composable("dashboard") {
-                        Content {
-                            Title("FlowState", "Build routines that follow your decisions.")
-                            Panel {
-                                Text(
-                                    "${automations.count { it.enabled }} active · ${automations.count { !it.enabled }} disabled",
-                                    style = MaterialTheme.typography.titleLarge,
-                                )
-                                Text(
-                                    "Next scheduled: ${automations.mapNotNull { it.nextAt }.minOrNull()?.let(::date) ?: "None"}"
-                                )
-                                Text(
-                                    "${executions.sumOf { codec.decodeFromString<Execution>(it.snapshot).pendingInteractions().size }} pending interactions"
-                                )
-                            }
-                            Button(
-                                onClick = { create = true },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("Create automation")
-                            }
-                            if (!Platform(context).notificationsAllowed())
-                                Panel {
-                                    Text("Notifications unavailable. Questions remain in Activity.")
-                                    TextButton(onClick = { nav.navigate("settings") }) {
-                                        Text("Permission health")
-                                    }
+                                .forEach { (name, icon) ->
+                                    NavigationBarItem(
+                                        selected = route == name,
+                                        onClick = {
+                                            nav.navigate(name) {
+                                                popUpTo("dashboard") { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        },
+                                        icon = { Text(icon) },
+                                        label = {
+                                            Text(
+                                                name.replaceFirstChar(Char::uppercase),
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        },
+                                    )
                                 }
-                            if (automations.isEmpty())
+                        }
+                },
+            ) { padding ->
+                Surface(Modifier.padding(padding).fillMaxSize()) {
+                    NavHost(nav, startDestination = "dashboard") {
+                        composable("dashboard") {
+                            Content {
+                                Title("FlowState", "Build routines that follow your decisions.")
                                 Panel {
                                     Text(
-                                        "Create an automation, or explore eight editable example scenarios."
+                                        "${automations.count { it.enabled }} active · ${automations.count { !it.enabled }} disabled",
+                                        style = MaterialTheme.typography.titleLarge,
                                     )
                                     Text(
-                                        "Examples start disabled and use demo coordinates. Edit saved locations before enabling."
+                                        "Next scheduled: ${automations.mapNotNull { it.nextAt }.minOrNull()?.let { date(it) } ?: "None"}"
                                     )
-                                    TextButton(onClick = { vm.addExamples() }) {
-                                        Text("Add example workflows")
-                                    }
+                                    Text(
+                                        "${executions.sumOf { codec.decodeFromString<Execution>(it.snapshot).pendingInteractions().size }} pending interactions"
+                                    )
                                 }
-                            automations.take(4).forEach { a ->
-                                Panel {
-                                    Text(a.name, style = MaterialTheme.typography.titleMedium)
-                                    Text(a.status)
-                                    Row {
-                                        TextButton(onClick = { vm.start(a) }) { Text("Run now") }
-                                        TextButton(onClick = { nav.navigate("editor/${a.id}") }) {
-                                            Text("Edit blocks")
-                                        }
-                                    }
-                                }
-                            }
-                            Text("Recent activity", style = MaterialTheme.typography.titleMedium)
-                            executions.take(4).forEach { row ->
-                                TextButton(
-                                    onClick = {
-                                        expanded = row.id
-                                        nav.navigate("activity")
-                                    }
+                                Button(
+                                    onClick = { create = true },
+                                    modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Text(
-                                        "${automations.find { it.id==row.automationId }?.name ?: "Workflow"} · ${row.state}"
-                                    )
+                                    Text("Create automation")
                                 }
-                            }
-                            diagnostics.take(3).forEach {
-                                Text(it.message, color = MaterialTheme.colorScheme.error)
+                                if (!Platform(context).notificationsAllowed())
+                                    Panel {
+                                        Text(
+                                            "Notifications unavailable. Questions remain in Activity."
+                                        )
+                                        TextButton(onClick = { nav.navigate("settings") }) {
+                                            Text("Permission health")
+                                        }
+                                    }
+                                if (automations.isEmpty())
+                                    Panel {
+                                        Text(
+                                            "Create an automation, or explore eight editable example scenarios."
+                                        )
+                                        Text(
+                                            "Examples start disabled and use demo coordinates. Edit saved locations before enabling."
+                                        )
+                                        TextButton(onClick = { vm.addExamples() }) {
+                                            Text("Add example workflows")
+                                        }
+                                    }
+                                automations.take(4).forEach { a ->
+                                    Panel {
+                                        Text(a.name, style = MaterialTheme.typography.titleMedium)
+                                        Text(a.status)
+                                        FlowRow {
+                                            TextButton(onClick = { vm.start(a) }) {
+                                                Text("Run now")
+                                            }
+                                            TextButton(
+                                                onClick = { nav.navigate("editor/${a.id}") }
+                                            ) {
+                                                Text("Edit blocks")
+                                            }
+                                        }
+                                    }
+                                }
+                                Text(
+                                    "Recent activity",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                executions.take(4).forEach { row ->
+                                    TextButton(
+                                        onClick = {
+                                            expanded = row.id
+                                            nav.navigate("activity")
+                                        }
+                                    ) {
+                                        Text(
+                                            "${automations.find { it.id==row.automationId }?.name ?: "Workflow"} · ${row.state}"
+                                        )
+                                    }
+                                }
+                                diagnostics.take(3).forEach {
+                                    Text(it.message, color = MaterialTheme.colorScheme.error)
+                                }
                             }
                         }
+                        composable("automations") {
+                            Automations(
+                                vm,
+                                automations,
+                                executions,
+                                { create = true },
+                                { nav.navigate("editor/$it") },
+                            )
+                        }
+                        composable("locations") { Locations(vm, locations) }
+                        composable("activity") {
+                            Activity(vm, executions, automations, expanded, { expanded = it })
+                        }
+                        composable("settings") { SettingsScreen(vm, prefs, theme, diagnostics) }
+                        composable("editor/{id}") { back ->
+                            val a = automations.find { it.id == back.arguments?.getString("id") }
+                            if (a != null) Editor(vm, a) { nav.popBackStack() }
+                            else Content { Text("Loading automation…") }
+                        }
                     }
-                    composable("automations") {
-                        Automations(
-                            vm,
-                            automations,
-                            executions,
-                            { create = true },
-                            { nav.navigate("editor/$it") },
+                }
+            }
+            if (!onboarded)
+                AlertDialog(
+                    onDismissRequest = {},
+                    title = { Text("Welcome to FlowState") },
+                    text = {
+                        Text(
+                            "Build workflows with blocks and run them offline. Automatic location monitoring needs precise and background location. Android can delay alarms and geofences. Questions stay in Activity when notifications are denied. Set up permissions individually in Settings."
                         )
-                    }
-                    composable("locations") { Locations(vm, locations) }
-                    composable("activity") {
-                        Activity(vm, executions, automations, expanded, { expanded = it })
-                    }
-                    composable("settings") { SettingsScreen(vm, prefs, theme, diagnostics) }
-                    composable("editor/{id}") { back ->
-                        val a = automations.find { it.id == back.arguments?.getString("id") }
-                        if (a != null) Editor(vm, a) { nav.popBackStack() }
-                        else Content { Text("Loading automation…") }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { scope.launch { prefs.onboard() } }) {
+                            Text("Get started")
+                        }
+                    },
+                )
+            if (create)
+                CreateDialog(locations, { create = false }) { name, template, location ->
+                    vm.create(name, template, location) {
+                        create = false
+                        nav.navigate("editor/$it")
                     }
                 }
-            }
         }
-        if (!onboarded)
-            AlertDialog(
-                onDismissRequest = {},
-                title = { Text("Welcome to FlowState") },
-                text = {
-                    Text(
-                        "Build workflows with blocks and run them offline. Automatic location monitoring needs precise and background location. Android can delay alarms and geofences. Questions stay in Activity when notifications are denied. Set up permissions individually in Settings."
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { scope.launch { prefs.onboard() } }) {
-                        Text("Get started")
-                    }
-                },
-            )
-        if (create)
-            CreateDialog({ create = false }) { name, template ->
-                vm.create(name, template) {
-                    create = false
-                    nav.navigate("editor/$it")
-                }
-            }
     }
 }
 
 @Composable
-private fun CreateDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
+private fun CreateDialog(
+    locations: List<LocationEntity>,
+    onDismiss: () -> Unit,
+    onCreate: (String, String, String?) -> Unit,
+) {
     var name by rememberSaveable { mutableStateOf("New automation") }
     var template by rememberSaveable { mutableStateOf(FlowViewModel.templates.first()) }
     var expanded by remember { mutableStateOf(false) }
+    var selectedLocation by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create automation") },
@@ -270,11 +309,29 @@ private fun CreateDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Un
                         )
                     }
                 }
-                Text("Configure a time or location trigger in the editor.")
+                if (template in WorkflowPresets.locations) {
+                    Text("Choose the saved location for this trigger.")
+                    locations.forEach { l ->
+                        FilterChip(
+                            selected = selectedLocation == l.id,
+                            onClick = { selectedLocation = l.id },
+                            label = { Text(l.name) },
+                        )
+                    }
+                    if (locations.isEmpty())
+                        Text("Add a saved location first, or choose a time/manual template.")
+                }
+                Text("The template opens as editable blocks and starts disabled.")
             }
         },
         confirmButton = {
-            TextButton(onClick = { onCreate(name, template) }, enabled = name.isNotBlank()) {
+            TextButton(
+                onClick = { onCreate(name, template, selectedLocation) },
+                enabled =
+                    name.isNotBlank() &&
+                        name.length <= 120 &&
+                        (template !in WorkflowPresets.locations || selectedLocation != null),
+            ) {
                 Text("Create")
             }
         },
@@ -305,7 +362,7 @@ private fun Automations(
             label = { Text("Search automations") },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row {
+        FlowRow {
             listOf("All", "Enabled", "Disabled").forEach { f ->
                 FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) })
             }
@@ -328,19 +385,29 @@ private fun Automations(
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.weight(1f),
                     )
-                    Switch(a.enabled, { vm.enable(a, it) })
+                    Switch(
+                        a.enabled,
+                        { vm.enable(a, it) },
+                        modifier = Modifier.semantics { contentDescription = "Enable ${a.name}" },
+                    )
                 }
                 val d = remember(a.definition) { codec.decodeFromString<Definition>(a.definition) }
                 Text("${d.trigger.kind} · v${a.version} · ${a.status}")
                 Text(
+                    Dependencies.describe(d).let { description ->
+                        items.fold(description) { text, row -> text.replace(row.id, row.name) }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
                     "Last started: ${date(a.lastStarted)} · ${executions.count { it.automationId==a.id }} retained runs"
                 )
-                Row {
+                FlowRow {
                     TextButton(onClick = { onEdit(a.id) }) { Text("Edit") }
                     TextButton(onClick = { vm.start(a) }) { Text("Run") }
                     TextButton(onClick = { vm.duplicate(a) }) { Text("Copy") }
                 }
-                Row {
+                FlowRow {
                     TextButton(
                         onClick = {
                             name = a.name
@@ -424,7 +491,7 @@ private fun Locations(vm: FlowViewModel, locations: List<LocationEntity>) {
                 Text(
                     "${l.registration} · ${if(System.currentTimeMillis()-l.eventAt>3600000) "UNKNOWN (stale)" else l.occupancy}"
                 )
-                Row {
+                FlowRow {
                     TextButton(
                         onClick = {
                             selected = l
@@ -465,7 +532,17 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
     var name by remember { mutableStateOf(l?.name ?: "") }
     var lat by remember { mutableStateOf(l?.latitude?.toString() ?: "") }
     var lon by remember { mutableStateOf(l?.longitude?.toString() ?: "") }
-    var radius by remember { mutableStateOf(l?.radius?.toInt()?.toString() ?: "150") }
+    val defaults by remember {
+        Preferences(vm.application)
+    }
+        .options
+        .collectAsStateWithLifecycle(Preferences.defaults)
+    var radius by
+        remember(l?.id, defaults["radius"]) {
+            mutableStateOf(l?.radius?.toInt()?.toString() ?: defaults.getValue("radius"))
+        }
+    var dwell by remember { mutableStateOf((l?.dwellSeconds ?: 120).toString()) }
+    var cooldown by remember { mutableStateOf((l?.cooldownSeconds ?: 30).toString()) }
     var description by remember { mutableStateOf(l?.description ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
@@ -487,6 +564,16 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
                     { radius = it },
                     label = { Text("Radius metres (100–100000)") },
                 )
+                OutlinedTextField(
+                    dwell,
+                    { dwell = it },
+                    label = { Text("Minimum dwell seconds (30–86400)") },
+                )
+                OutlinedTextField(
+                    cooldown,
+                    { cooldown = it },
+                    label = { Text("Location event cooldown seconds (0–86400)") },
+                )
                 LocationMap(
                     lat.toDoubleOrNull() ?: 20.0,
                     lon.toDoubleOrNull() ?: 78.0,
@@ -495,8 +582,8 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
                     lat = latitude.toString()
                     lon = longitude.toString()
                 }
-                Row {
-                    listOf(100, 150, 300).forEach { r ->
+                FlowRow {
+                    listOf(100, 150, 200, 300, 500, 1000).forEach { r ->
                         TextButton(onClick = { radius = r.toString() }) { Text("$r m") }
                     }
                 }
@@ -533,8 +620,12 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
                     { description = it },
                     label = { Text("Description") },
                 )
-                Row {
-                    Checkbox(enabled, { enabled = it })
+                FlowRow {
+                    Checkbox(
+                        enabled,
+                        { enabled = it },
+                        modifier = Modifier.semantics { contentDescription = "Location enabled" },
+                    )
                     Text("Location enabled")
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -553,7 +644,18 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
                                 longitude in -180.0..180.0 &&
                                 r in 100f..100000f
                         )
-                        vm.saveLocation(l?.id, name, latitude, longitude, r, description, enabled)
+                        require(dwell.toInt() in 30..86400 && cooldown.toInt() in 0..86400)
+                        vm.saveLocation(
+                            l?.id,
+                            name,
+                            latitude,
+                            longitude,
+                            r,
+                            description,
+                            enabled,
+                            dwell.toInt(),
+                            cooldown.toInt(),
+                        )
                         onDismiss()
                     } catch (e: Exception) {
                         error = "Enter a name, valid coordinates and radius ≥100 m"
@@ -580,6 +682,7 @@ private fun Activity(
     var simulationSnapshot by remember { mutableStateOf<Execution?>(null) }
     val events by vm.events.collectAsStateWithLifecycle()
     val locationEvents by vm.locationEvents.collectAsStateWithLifecycle()
+    val locations by vm.locations.collectAsStateWithLifecycle()
     Content {
         Title("Activity", "Respond to questions and inspect execution history.")
         rows.forEach { row ->
@@ -594,7 +697,7 @@ private fun Activity(
                 e.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 e.pendingInteractions().forEach { InteractionPanel(vm, row.id, it) }
                 e.wakeAt?.let { Text("Scheduled wake: ${date(it)}") }
-                Row {
+                FlowRow {
                     TextButton(onClick = { onExpand(if (expanded == row.id) null else row.id) }) {
                         Text("Trace")
                     }
@@ -636,7 +739,15 @@ private fun Activity(
             }
         }
         simulation?.let { d ->
-            Simulator(d, simulationLibrary, initial = simulationSnapshot)
+            Simulator(
+                d,
+                simulationLibrary,
+                initial = simulationSnapshot,
+                locationModels =
+                    locations.associate {
+                        it.id to LocationState(it.latitude, it.longitude, it.radius.toDouble())
+                    },
+            )
         }
     }
 }
@@ -663,13 +774,19 @@ private fun InteractionPanel(vm: FlowViewModel, id: String, i: Interaction) {
                 i.groups[index]
                     ?.takeIf { it.isNotBlank() && (index == 0 || it != i.groups[index - 1]) }
                     ?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
-                Row {
+                FlowRow {
                     Checkbox(
                         index in checked,
                         {
                             checked = if (it) checked + index else checked - index
                             vm.checklist(id, i.token, checked)
                         },
+                        modifier =
+                            Modifier.semantics {
+                                contentDescription =
+                                    label.removePrefix("?") +
+                                        (if (index !in i.required) " optional" else " required")
+                            },
                     )
                     Text(
                         label.removePrefix("?") + (if (index !in i.required) " (optional)" else "")
@@ -720,6 +837,7 @@ private fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val platform = remember { Platform(context) }
     var healthVersion by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { healthVersion++ }
     var backgroundExplanation by remember { mutableStateOf(false) }
     var importMode by remember { mutableStateOf("new") }
     val permissions =
@@ -765,8 +883,9 @@ private fun SettingsScreen(
     Content {
         Title("Settings", "Permissions, backup and local diagnostics.")
         ChecklistManager(vm)
+        PersonalSettings(vm, prefs)
         Text("Theme", style = MaterialTheme.typography.titleMedium)
-        Row {
+        FlowRow {
             listOf("system", "light", "dark").forEach { t ->
                 FilterChip(
                     selected = theme == t,
@@ -869,7 +988,7 @@ private fun SettingsScreen(
             Text(
                 "Export workflows, locations, checklist templates, persistent values, recent execution snapshots, trigger ledger and preferences. Imports validate before writing and start disabled; historical active runs are archived as cancelled."
             )
-            Row {
+            FlowRow {
                 TextButton(onClick = { export.launch("FlowState-backup.json") }) { Text("Export") }
                 TextButton(onClick = { import.launch(arrayOf("application/json", "text/plain")) }) {
                     Text("Import")

@@ -499,6 +499,10 @@ object Compiler {
         if (declarations.size != d.variables.size) issue("Duplicate scoped variable")
 
         d.variables.forEach {
+            if (it.elementType != null && it.type != Type.LIST)
+                issue("Only list variables can declare an element type")
+            if (!it.accepts(it.default))
+                issue("Variable default has an incompatible list element type")
             if (it.default.type != Type.NULL && it.default.type != it.type)
                 issue("Variable default must match its declared type")
 
@@ -517,6 +521,8 @@ object Compiler {
                 return Type.NULL
             }
 
+            if (e.op in Dependencies.locationOps && e.name !in locations)
+                issue("Select an existing saved location", node)
             if (e.op == "literal") return e.value?.type ?: Type.NULL
 
             if (e.op == "list" && e.name.isNotBlank()) {
@@ -749,10 +755,10 @@ object Compiler {
                     (n.fields["SNOOZE"] ?: "5,15").split(',').map { it.trim().toLongOrNull() }
 
                 if (snooze.size !in 1..5 || snooze.any { it == null || it !in 1..1440 })
-                    issue("Provide 1â€“5 snooze durations from 1 to 1440 minutes", n.id)
+                    issue("Provide 1–5 snooze durations from 1 to 1440 minutes", n.id)
 
                 if ((n.fields["MAXSNOOZE"] ?: "3").toIntOrNull()?.let { it in 0..10 } != true)
-                    issue("Maximum snoozes must be 0â€“10", n.id)
+                    issue("Maximum snoozes must be 0–10", n.id)
 
                 if ((n.fields["FOLLOWUP"] ?: "0").toLongOrNull()?.let { it in 0..604800 } != true)
                     issue("Follow-up must be disabled (0) or within seven days", n.id)
@@ -772,7 +778,7 @@ object Compiler {
                             options.isEmpty() &&
                             n.fields["TEMPLATE"].isNullOrBlank()
                 )
-                    issue("Provide 1â€“100 distinct options/items", n.id)
+                    issue("Provide 1–100 distinct options/items", n.id)
 
                 if (((n.fields["TIMEOUT"] ?: "900").toLongOrNull() ?: -1L) !in 0L..31536000L)
                     issue("Invalid interaction timeout", n.id)

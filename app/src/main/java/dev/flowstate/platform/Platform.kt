@@ -158,7 +158,9 @@ class Platform(private val context: Context) {
         val configuration =
             locations
                 .sortedBy { it.id }
-                .joinToString(";") { "${it.id}:${it.latitude}:${it.longitude}:${it.radius}" }
+                .joinToString(";") {
+                    "${it.id}:${it.latitude}:${it.longitude}:${it.radius}:${it.dwellSeconds}:${it.cooldownSeconds}"
+                }
         val boot = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
         val fingerprint =
             MessageDigest.getInstance("SHA-256")
@@ -198,7 +200,7 @@ class Platform(private val context: Context) {
                             Geofence.GEOFENCE_TRANSITION_EXIT or
                             Geofence.GEOFENCE_TRANSITION_DWELL
                     )
-                    .setLoiteringDelay(120000)
+                    .setLoiteringDelay(it.dwellSeconds * 1000)
                     .setNotificationResponsiveness(120000)
                     .build()
             }

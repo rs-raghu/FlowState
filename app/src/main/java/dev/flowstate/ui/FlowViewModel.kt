@@ -3,15 +3,18 @@ package dev.flowstate.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.flowstate.FlowStateApp
 import dev.flowstate.data.*
 import dev.flowstate.engine.*
 import java.util.UUID
+import javax.inject.Inject
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 
-class FlowViewModel(app: Application) : AndroidViewModel(app) {
+@HiltViewModel
+class FlowViewModel @Inject constructor(app: Application) : AndroidViewModel(app) {
     val application = app as FlowStateApp
     val dao = application.database.dao()
     val automations =
@@ -82,11 +85,16 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
         application.coordinator.snooze(id, minutes, token)
     }
 
-    fun create(name: String, template: String, onCreated: (String) -> Unit) = work {
-        val id = UUID.randomUUID().toString()
-        application.coordinator.save(id, name, template(template))
-        onCreated(id)
-    }
+    fun create(name: String, template: String, location: String?, onCreated: (String) -> Unit) =
+        work {
+            val id = UUID.randomUUID().toString()
+            application.coordinator.save(
+                id,
+                name,
+                template(template, location, Preferences(application).options.first()),
+            )
+            onCreated(id)
+        }
 
     fun addExamples() = work {
         val count = application.coordinator.importBackup(BuiltInExamples.source(application))
@@ -102,6 +110,8 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
         radius: Float,
         description: String,
         enabled: Boolean = true,
+        dwellSeconds: Int = 120,
+        cooldownSeconds: Int = 30,
     ) = work {
         require(name.isNotBlank() && name.length <= 120)
         require(
@@ -124,21 +134,13 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
                 enabled,
                 old?.created ?: now,
                 now,
+                dwellSeconds = dwellSeconds,
+                cooldownSeconds = cooldownSeconds,
             )
         )
     }
 
     fun deleteLocation(l: LocationEntity) = work {
-        require(
-            dao.automations().none {
-                codec
-                    .decodeFromJsonElement<Definition>(codec.parseToJsonElement(it.definition))
-                    .trigger
-                    .locationId == l.id
-            }
-        ) {
-            "This location is referenced by an automation"
-        }
         application.coordinator.deleteLocation(l.id)
     }
 
@@ -158,53 +160,10 @@ class FlowViewModel(app: Application) : AndroidViewModel(app) {
                 "Location-based Safety Checklist",
             )
 
-        fun template(name: String): String {
-            val checklist = name != "Blank message"
-            val action = buildJsonObject {
-                put("type", if (checklist) "fs_checklist" else "fs_message")
-                put("id", UUID.randomUUID().toString())
-                put(
-                    "fields",
-                    buildJsonObject {
-                        put("TITLE", if (checklist) name else "Reminder")
-                        if (checklist)
-                            put(
-                                "OPTIONS",
-                                when (name) {
-                                    "Going to Class" -> "Notebook|ID|Pen"
-                                    "Gym Preparation" -> "Shoes|Water|Towel"
-                                    "Going to Mess" -> "ID|?Water"
-                                    else -> "Keys|Wallet|?Water"
-                                },
-                            )
-                        else put("BODY", "Your workflow is running")
-                    },
-                )
-            }
-            return buildJsonObject {
-                put(
-                    "blocks",
-                    buildJsonObject {
-                        put("languageVersion", 0)
-                        put(
-                            "blocks",
-                            buildJsonArray {
-                                add(
-                                    buildJsonObject {
-                                        put("type", "fs_trigger")
-                                        put("id", UUID.randomUUID().toString())
-                                        put("x", 30)
-                                        put("y", 40)
-                                        put("fields", buildJsonObject { put("KIND", "manual") })
-                                        put("next", buildJsonObject { put("block", action) })
-                                    }
-                                )
-                            },
-                        )
-                    },
-                )
-            }
-                .toString()
-        }
+        fun template(
+            name: String,
+            location: String? = null,
+            defaults: Map<String, String> = Preferences.defaults,
+        ): String = WorkflowPresets.source(name, location, defaults)
     }
 }

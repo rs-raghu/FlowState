@@ -32,10 +32,17 @@ The editor persists its foreground draft on changes and restores after recreatio
 
 Verification: 63 core and six editor tests pass; debug assembly, lint and native test compilation pass. API 36 passed the previous 14 native cases plus process recovery. The API 29 named-notification test observed asynchronous platform posting; a bounded state wait repairs its assertion. Current native additions await CI.
 
+## Personal defaults, presets and current Android stack
+
+Implemented validated personal defaults, Material You colors and time formatting, confirmed data controls, private diagnostic reports/test actions, meaningful editable time/location/choice presets, enlarged-text wrapping and accessibility labels. Location dwell and cooldown are configurable; nested expression dependencies protect deletion. Room schema 4 migrates 3 without loss. Location history and all defaults roundtrip with backups; automation deletion removes its ledger and draft.
+
+Migrated to SDK 37.0/target 37, AGP 9.4.1, Gradle 9.6.0, built-in Kotlin 2.4.21, KSP 2.3.12 and Hilt 2.60.1, with verified current AndroidX pins. The editor targets older Chromium and uses a bounded foreground message queue when the origin-scoped WebMessage listener is unavailable. No JavaScript interface is exposed to frames. Added actual startup diagnostics, notification permission/recovery, platform timer, preset/default, geofence-filter and enlarged-text native tests. CI now also targets API 37.0 and installs/launches an R8 build signed only for smoke testing with its debug key.
+
+Verification: 65 core tests and six editor tests pass. Debug assembly, lint (zero errors), native test compilation and optimized release assembly pass. The 23-case native suite and R8 launch await the new hosted run; no device result is inferred from compilation.
+
 ## Remaining software stages
 
-- Personal defaults, final templates and remaining native/platform checks.
-- Current Android stack migration and release runtime/platform verification.
+- Final resource-budget and backup-boundary audit, remaining native/platform verification.
 - Final requirement audit and APK/handoff documentation.
 
 ## Final user checks

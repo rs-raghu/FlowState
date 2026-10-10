@@ -1,15 +1,13 @@
 package dev.flowstate
 
 import android.app.Application
-import androidx.room.Room
+import dagger.hilt.android.HiltAndroidApp
 import dev.flowstate.data.Coordinator
 import dev.flowstate.data.FlowDatabase
+import javax.inject.Inject
 
+@HiltAndroidApp
 class FlowStateApp : Application() {
-    val database by lazy {
-        Room.databaseBuilder(this, FlowDatabase::class.java, "flowstate.db")
-            .addMigrations(FlowDatabase.MIGRATION_1_2, FlowDatabase.MIGRATION_2_3)
-            .build()
-    }
-    val coordinator by lazy { Coordinator(database, this) }
+    @Inject lateinit var database: FlowDatabase
+    @Inject lateinit var coordinator: Coordinator
 }

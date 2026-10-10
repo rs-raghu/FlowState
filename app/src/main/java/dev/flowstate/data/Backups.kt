@@ -16,6 +16,8 @@ data class BackupLocation(
     val longitude: Double,
     val radius: Float,
     val description: String = "",
+    val dwellSeconds: Int = 120,
+    val cooldownSeconds: Int = 30,
 )
 
 @Serializable
@@ -27,41 +29,53 @@ data class Backup(
     val variables: List<VariableEntity> = emptyList(),
     val history: List<ExecutionEntity> = emptyList(),
     val events: List<EventEntity> = emptyList(),
+    val locationEvents: List<LocationEventEntity> = emptyList(),
     val settings: Map<String, String> = emptyMap(),
 )
 
 class Backups(private val db: FlowDatabase, private val preferences: Preferences? = null) {
     suspend fun export(): String = db.withTransaction {
-        codec.encodeToString(
-            Backup(
-                templates =
-                    db.dao().checklists().map {
-                        codec.decodeFromString<ChecklistTemplate>(it.payload)
-                    },
-                variables = db.dao().variables(),
-                history = db.dao().observeExecutions().first(),
-                events = db.dao().events(),
-                settings = preferences?.snapshot() ?: emptyMap(),
-                automations =
-                    db.dao().automations().map { BackupAutomation(it.id, it.name, it.workspace) },
-                locations =
-                    db.dao().locations().map {
-                        BackupLocation(
-                            it.id,
-                            it.name,
-                            it.latitude,
-                            it.longitude,
-                            it.radius,
-                            it.description,
-                        )
-                    },
+        codec
+            .encodeToString(
+                Backup(
+                    templates =
+                        db.dao().checklists().map {
+                            codec.decodeFromString<ChecklistTemplate>(it.payload)
+                        },
+                    variables = db.dao().variables(),
+                    history = db.dao().observeExecutions().first(),
+                    events = db.dao().events(),
+                    locationEvents = db.dao().observeLocationEvents().first(),
+                    settings = preferences?.snapshot() ?: emptyMap(),
+                    automations =
+                        db.dao().automations().map {
+                            BackupAutomation(it.id, it.name, it.workspace)
+                        },
+                    locations =
+                        db.dao().locations().map {
+                            BackupLocation(
+                                it.id,
+                                it.name,
+                                it.latitude,
+                                it.longitude,
+                                it.radius,
+                                it.description,
+                                it.dwellSeconds,
+                                it.cooldownSeconds,
+                            )
+                        },
+                )
             )
-        )
+            .also {
+                require(it.toByteArray(Charsets.UTF_8).size <= 16_000_000) {
+                    "Backup exceeds 16 MB; clear old execution history before exporting"
+                }
+            }
     }
 
     suspend fun import(source: String, mode: String = "new"): Int {
         require(mode in setOf("new", "merge", "overwrite"))
-        require(source.length <= 16_000_000) { "Backup exceeds 16 MB" }
+        require(source.toByteArray(Charsets.UTF_8).size <= 16_000_000) { "Backup exceeds 16 MB" }
         var backup = codec.decodeFromString<Backup>(SafeInput.json(source))
         val remap = mutableMapOf<String, String>()
         if (mode == "merge") {
@@ -97,6 +111,7 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                         backup.variables.map { it.copy(owner = remap[it.owner] ?: it.owner) },
                     history = emptyList(),
                     events = emptyList(),
+                    locationEvents = emptyList(),
                 )
         }
         require(backup.schema in 1..2)
@@ -104,7 +119,8 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
             backup.templates.size <= 500 &&
                 backup.variables.size <= 10000 &&
                 backup.history.size <= 200 &&
-                backup.events.size <= 100000
+                backup.events.size <= 100000 &&
+                backup.locationEvents.size <= 200
         )
         require(backup.templates.map { it.id }.toSet().size == backup.templates.size)
         backup.templates.forEach { t ->
@@ -120,9 +136,7 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                     }
             )
         }
-        require(backup.settings.keys.all { it in setOf("theme", "onboarded") })
-        backup.settings["theme"]?.let { require(it in listOf("system", "light", "dark")) }
-        backup.settings["onboarded"]?.toBooleanStrict()
+        Preferences.validate(backup.settings)
         require(backup.automations.size <= 500 && backup.locations.size <= 500)
         require(backup.automations.map { it.id }.toSet().size == backup.automations.size)
         require(backup.locations.map { it.id }.toSet().size == backup.locations.size)
@@ -136,7 +150,11 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                     it.longitude in -180.0..180.0 &&
                     it.radius.isFinite() &&
                     it.radius in 100f..100000f &&
-                    it.name.isNotBlank()
+                    it.name.isNotBlank() &&
+                    it.name.length <= 120 &&
+                    it.description.length <= 4096 &&
+                    it.dwellSeconds in 30..86400 &&
+                    it.cooldownSeconds in 0..86400
             )
             java.util.UUID.fromString(it.id)
         }
@@ -177,6 +195,11 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
             }
         val sharedIssues = Compiler.validateSharedVariables(existing + active + definitions.values)
         if (sharedIssues.isNotEmpty()) throw ValidationException(sharedIssues)
+        require(
+            backup.variables.map { it.owner to it.name }.distinct().size == backup.variables.size
+        ) {
+            "Duplicate persistent variable"
+        }
         val importedVariables =
             backup.variables.filter {
                 mode != "merge" ||
@@ -222,7 +245,7 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                     val issues =
                         Compiler.validate(
                             d,
-                            locations,
+                            locations + Dependencies.locations(d),
                             execution.capturedDefinitions().map { it.id }.toSet(),
                         )
                     if (issues.isNotEmpty()) throw ValidationException(issues)
@@ -273,6 +296,8 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                         it.description,
                         created = now,
                         updated = now,
+                        dwellSeconds = it.dwellSeconds,
+                        cooldownSeconds = it.cooldownSeconds,
                     )
                 )
             }
@@ -296,8 +321,22 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                 if (dao.execution(it.id) == null && dao.byEvent(it.eventKey) == null)
                     dao.insertExecution(it)
             }
+            backup.locationEvents.forEach {
+                require(
+                    it.locationId in locations &&
+                        it.transition in setOf("enter", "exit", "dwell") &&
+                        it.at >= 0 &&
+                        it.key.length <= 500
+                )
+                dao.locationEvent(it)
+            }
             backup.events.forEach {
-                require(it.automationId in workflows && it.key.length <= 500)
+                require(
+                    it.automationId in workflows &&
+                        it.key.length <= 500 &&
+                        it.at >= 0 &&
+                        it.outcome.length <= 1024
+                )
                 if (dao.event(it.key) == null) dao.saveEvent(it)
             }
         }
@@ -307,6 +346,11 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
 
     private fun validateValue(v: Value, depth: Int = 0) {
         require(depth <= 32 && v.text.length <= 16384 && v.items.size <= 1000)
+        require(v.type == Type.LIST || (v.items.isEmpty() && v.elementType == null)) {
+            "Only lists can contain items or an element type"
+        }
+        if (v.type == Type.LIST) require(v.text.isEmpty())
+        if (v.type == Type.NULL) require(v.text.isEmpty())
         when (v.type) {
             Type.BOOLEAN -> v.boolean()
             Type.INTEGER,

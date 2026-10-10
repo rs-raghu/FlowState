@@ -7,13 +7,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.webkit.*
 import dev.flowstate.data.AutomationEntity
 import dev.flowstate.data.EditorDrafts
 import dev.flowstate.engine.*
 import java.io.ByteArrayInputStream
 import java.util.UUID
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -23,11 +27,13 @@ import kotlinx.serialization.json.*
 @Composable
 fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
     val automations by vm.automations.collectAsStateWithLifecycle()
+    val locations by vm.locations.collectAsStateWithLifecycle()
     var view by remember { mutableStateOf<WebView?>(null) }
     var dirty by remember { mutableStateOf(false) }
     var confirmClose by remember { mutableStateOf(false) }
     var simulation by remember { mutableStateOf<Definition?>(null) }
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val drafts = remember { EditorDrafts(vm.application) }
     fun close() {
         if (dirty) confirmClose = true else onClose()
@@ -47,6 +53,17 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                 settings.allowContentAccess = false
                 settings.domStorageEnabled = false
                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                webChromeClient =
+                    object : WebChromeClient() {
+                        override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                            if (dev.flowstate.BuildConfig.DEBUG)
+                                android.util.Log.d(
+                                    "FlowStateEditor",
+                                    "${message.messageLevel()}: ${message.message()} (${message.lineNumber()})",
+                                )
+                            return true
+                        }
+                    }
                 webViewClient =
                     object : WebViewClient() {
                         override fun shouldInterceptRequest(
@@ -64,157 +81,191 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                             v: WebView,
                             request: WebResourceRequest,
                         ) =
-                            request.url.host != "appassets.androidplatform.net" ||
-                                request.url.path?.startsWith("/assets/editor/") != true
+                            request.url.toString() !=
+                                "https://appassets.androidplatform.net/assets/editor/index.html"
                     }
+                fun receiveEditorMessage(data: String) {
+                    if (data.length > 2_000_000) {
+                        vm.message.value = "Editor message exceeds 2 MB"
+                        return
+                    }
+                    try {
+                        val immediate = codec.parseToJsonElement(SafeInput.json(data)).jsonObject
+                        if (immediate["action"]?.jsonPrimitive?.content == "dirty") {
+                            dirty = true
+                            immediate["workspace"]?.let { drafts.save(a.id, it.toString()) }
+                            return
+                        }
+                    } catch (e: Exception) {
+                        vm.message.value = e.message
+                        return
+                    }
+                    scope.launch {
+                        try {
+                            val payload = codec.parseToJsonElement(SafeInput.json(data)).jsonObject
+                            when (payload["action"]?.jsonPrimitive?.content) {
+                                "ready" -> {
+                                    fun resources(items: List<Pair<String, String>>) =
+                                        buildJsonArray {
+                                            items.forEach { (id, name) ->
+                                                add(
+                                                    buildJsonObject {
+                                                        put("id", id)
+                                                        put("name", name)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    val r = buildJsonObject {
+                                        put(
+                                            "defaults",
+                                            codec.encodeToJsonElement(
+                                                dev.flowstate.data
+                                                    .Preferences(vm.application)
+                                                    .options
+                                                    .first()
+                                            ),
+                                        )
+                                        put(
+                                            "locations",
+                                            resources(vm.dao.locations().map { it.id to it.name }),
+                                        )
+                                        put(
+                                            "templates",
+                                            resources(vm.dao.checklists().map { it.id to it.name }),
+                                        )
+                                        put(
+                                            "workflows",
+                                            resources(
+                                                vm.dao
+                                                    .automations()
+                                                    .filter { it.id != a.id }
+                                                    .map { it.id to it.name }
+                                            ),
+                                        )
+                                    }
+                                    evaluateJavascript(
+                                        "FlowEditor.resources($r);FlowEditor.load(${drafts.source(a.id) ?: a.workspace})",
+                                        null,
+                                    )
+                                    dirty = drafts.source(a.id) != null
+                                }
+                                "dirty" -> {
+                                    dirty = true
+                                    payload["workspace"]?.let {
+                                        drafts.save(a.id, it.toString())
+                                    }
+                                }
+                                "close" -> close()
+                                "save",
+                                "copy",
+                                "validate",
+                                "simulate" -> {
+                                    val source = requireNotNull(payload["workspace"]).toString()
+                                    val action = payload["action"]!!.jsonPrimitive.content
+                                    val id =
+                                        if (action == "copy") UUID.randomUUID().toString() else a.id
+                                    val d =
+                                        Compiler.compile(
+                                            source,
+                                            id,
+                                            a.version + 1,
+                                            vm.locations.value.map { it.id }.toSet(),
+                                            vm.automations.value.map { it.id }.toSet(),
+                                            vm.dao.checklists().associate {
+                                                it.id to
+                                                    codec.decodeFromString<ChecklistTemplate>(
+                                                        it.payload
+                                                    )
+                                            },
+                                        )
+                                    when (action) {
+                                        "save",
+                                        "copy" -> {
+                                            vm.application.coordinator.save(
+                                                id,
+                                                if (action == "copy") a.name + " copy" else a.name,
+                                                source,
+                                            )
+                                            dirty = false
+                                            drafts.clear(a.id)
+                                            evaluateJavascript("FlowEditor.saved()", null)
+                                            if (action == "copy") onClose()
+                                        }
+                                        "validate" ->
+                                            evaluateJavascript(
+                                                "FlowEditor.errors(${codec.encodeToString(Compiler.warnings(d))})",
+                                                null,
+                                            )
+                                        "simulate" -> simulation = d
+                                    }
+                                }
+                            }
+                        } catch (e: ValidationException) {
+                            val issues = buildJsonArray {
+                                e.issues.forEach {
+                                    add(
+                                        buildJsonObject {
+                                            put("code", it.code)
+                                            put("severity", it.severity)
+                                            put("block", it.block)
+                                            put("message", it.message)
+                                            put("correction", it.correction)
+                                        }
+                                    )
+                                }
+                            }
+                            evaluateJavascript("FlowEditor.errors($issues)", null)
+                        } catch (e: Exception) {
+                            vm.message.value = e.message ?: "Editor operation failed"
+                        }
+                    }
+                }
                 if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
                     WebViewCompat.addWebMessageListener(
                         this,
                         "FlowBridge",
                         setOf("https://appassets.androidplatform.net"),
-                    ) { _, message, origin, isMainFrame, _ ->
-                        if (!isMainFrame || origin.host != "appassets.androidplatform.net")
-                            return@addWebMessageListener
-                        val data = message.data ?: return@addWebMessageListener
-                        if (data.length > 2_000_000) {
-                            vm.message.value = "Editor message exceeds 2 MB"
-                            return@addWebMessageListener
-                        }
-                        try {
-                            val immediate =
-                                codec.parseToJsonElement(SafeInput.json(data)).jsonObject
-                            if (immediate["action"]?.jsonPrimitive?.content == "dirty") {
-                                dirty = true
-                                immediate["workspace"]?.let { drafts.save(a.id, it.toString()) }
-                                return@addWebMessageListener
-                            }
-                        } catch (e: Exception) {
-                            vm.message.value = e.message
-                            return@addWebMessageListener
-                        }
-                        scope.launch {
-                            try {
-                                val payload =
-                                    codec.parseToJsonElement(SafeInput.json(data)).jsonObject
-                                when (payload["action"]?.jsonPrimitive?.content) {
-                                    "ready" -> {
-                                        fun resources(items: List<Pair<String, String>>) =
-                                            buildJsonArray {
-                                                items.forEach { (id, name) ->
-                                                    add(
-                                                        buildJsonObject {
-                                                            put("id", id)
-                                                            put("name", name)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        val r = buildJsonObject {
-                                            put(
-                                                "locations",
-                                                resources(
-                                                    vm.dao.locations().map { it.id to it.name }
-                                                ),
-                                            )
-                                            put(
-                                                "templates",
-                                                resources(
-                                                    vm.dao.checklists().map { it.id to it.name }
-                                                ),
-                                            )
-                                            put(
-                                                "workflows",
-                                                resources(
-                                                    vm.dao
-                                                        .automations()
-                                                        .filter { it.id != a.id }
-                                                        .map { it.id to it.name }
-                                                ),
-                                            )
-                                        }
-                                        evaluateJavascript(
-                                            "FlowEditor.resources($r);FlowEditor.load(${drafts.source(a.id) ?: a.workspace})",
-                                            null,
-                                        )
-                                        dirty = drafts.source(a.id) != null
-                                    }
-                                    "dirty" -> {
-                                        dirty = true
-                                        payload["workspace"]?.let {
-                                            drafts.save(a.id, it.toString())
-                                        }
-                                    }
-                                    "close" -> close()
-                                    "save",
-                                    "copy",
-                                    "validate",
-                                    "simulate" -> {
-                                        val source = requireNotNull(payload["workspace"]).toString()
-                                        val action = payload["action"]!!.jsonPrimitive.content
-                                        val id =
-                                            if (action == "copy") UUID.randomUUID().toString()
-                                            else a.id
-                                        val d =
-                                            Compiler.compile(
-                                                source,
-                                                id,
-                                                a.version + 1,
-                                                vm.locations.value.map { it.id }.toSet(),
-                                                vm.automations.value.map { it.id }.toSet(),
-                                                vm.dao.checklists().associate {
-                                                    it.id to
-                                                        codec.decodeFromString<ChecklistTemplate>(
-                                                            it.payload
-                                                        )
-                                                },
-                                            )
-                                        when (action) {
-                                            "save",
-                                            "copy" -> {
-                                                vm.application.coordinator.save(
-                                                    id,
-                                                    if (action == "copy") a.name + " copy"
-                                                    else a.name,
-                                                    source,
+                    ) { _, message, origin, main, _ ->
+                        if (
+                            main &&
+                                origin.scheme == "https" &&
+                                origin.host == "appassets.androidplatform.net" &&
+                                origin.port in setOf(-1, 443)
+                        )
+                            message.data?.let(::receiveEditorMessage)
+                    }
+                } else {
+                    // evaluateJavascript runs only in the top-level trusted document. No JavaScript
+                    // interface is exposed to frames. Polling exists only while this editor is
+                    // resumed.
+                    scope.launch {
+                        lifecycleOwner.lifecycle.repeatOnLifecycle(
+                            androidx.lifecycle.Lifecycle.State.RESUMED
+                        ) {
+                            while (isActive) {
+                                kotlinx.coroutines.delay(250)
+                                if (
+                                    url ==
+                                        "https://appassets.androidplatform.net/assets/editor/index.html"
+                                )
+                                    evaluateJavascript(
+                                        "window.FlowEditor && FlowEditor.takeMessage ? JSON.stringify(FlowEditor.takeMessage()) : null"
+                                    ) { raw ->
+                                        if (raw != null && raw != "null" && raw.length <= 4_000_000)
+                                            try {
+                                                receiveEditorMessage(
+                                                    codec.decodeFromString<String>(raw)
                                                 )
-                                                dirty = false
-                                                drafts.clear(a.id)
-                                                evaluateJavascript("FlowEditor.saved()", null)
-                                                if (action == "copy") onClose()
+                                            } catch (e: Exception) {
+                                                vm.message.value = e.message
                                             }
-                                            "validate" ->
-                                                evaluateJavascript(
-                                                    "FlowEditor.errors(${codec.encodeToString(Compiler.warnings(d))})",
-                                                    null,
-                                                )
-                                            "simulate" -> simulation = d
-                                        }
                                     }
-                                }
-                            } catch (e: ValidationException) {
-                                val issues = buildJsonArray {
-                                    e.issues.forEach {
-                                        add(
-                                            buildJsonObject {
-                                                put("code", it.code)
-                                                put("severity", it.severity)
-                                                put("block", it.block)
-                                                put("message", it.message)
-                                                put("correction", it.correction)
-                                            }
-                                        )
-                                    }
-                                }
-                                evaluateJavascript("FlowEditor.errors($issues)", null)
-                            } catch (e: Exception) {
-                                vm.message.value = e.message ?: "Editor operation failed"
                             }
                         }
                     }
-                    loadUrl("https://appassets.androidplatform.net/assets/editor/index.html")
-                } else
-                    vm.message.value =
-                        "Update Android System WebView to use the secure editor bridge"
+                }
+                loadUrl("https://appassets.androidplatform.net/assets/editor/index.html")
             }
         },
     )
@@ -256,6 +307,10 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                 automations.map {
                     codec.decodeFromJsonElement<Definition>(codec.parseToJsonElement(it.definition))
                 },
+                locationModels =
+                    locations.associate {
+                        it.id to LocationState(it.latitude, it.longitude, it.radius.toDouble())
+                    },
                 onHighlight = { id ->
                     view?.evaluateJavascript("FlowEditor.highlight(${JsonPrimitive(id)})", null)
                 },

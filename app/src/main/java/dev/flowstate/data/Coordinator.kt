@@ -6,6 +6,7 @@ import dev.flowstate.engine.*
 import dev.flowstate.platform.Platform
 import java.time.ZoneId
 import java.util.UUID
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
@@ -60,6 +61,76 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
     }
 
     suspend fun reconcile() = operations.withLock { reconcileInternal() }
+
+    suspend fun clearHistory() = operations.withLock {
+        db.withTransaction {
+            dao.pruneExecutions(Long.MAX_VALUE)
+            dao.clearDiagnostics()
+        }
+    }
+
+    suspend fun resetVariables() = operations.withLock {
+        require(dao.active().isEmpty()) {
+            "Cancel active runs before resetting persistent variables"
+        }
+        dao.resetVariables()
+    }
+
+    suspend fun resetAll() = operations.withLock {
+        dao.automations().forEach { platform.cancelAlarm("automation", it.id) }
+        dao.active().forEach {
+            platform.cancelAlarm("execution", it.id)
+            platform.cancelAllExecutionNotifications(it.id)
+        }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            androidx.work.WorkManager.getInstance(context).cancelAllWork().result.get()
+        }
+        context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { db.clearAllTables() }
+        for (name in listOf("editor-draft", "dismissed-reminders", "coordinator-health")) context
+            .getSharedPreferences(name, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        Preferences(context).reset()
+        val failure = platform.register(emptyList())
+        if (failure != null) dao.diagnostic(DiagnosticEntity(at = now, message = failure))
+    }
+
+    suspend fun diagnosticReport(): String = operations.withLock {
+        val runs = dao.active()
+        buildString {
+            appendLine(
+                "FlowState ${dev.flowstate.BuildConfig.VERSION_NAME} (${dev.flowstate.BuildConfig.VERSION_CODE}); Android ${android.os.Build.VERSION.SDK_INT}"
+            )
+            appendLine(
+                "Notifications=${platform.notificationsAllowed()}, precise=${platform.precise()}, background=${platform.background()}, services=${platform.locationEnabled()}, Google Play Services=${platform.playServices()}, exact alarms=${platform.exact()}"
+            )
+            appendLine(
+                "Last reconciliation: " +
+                    context
+                        .getSharedPreferences("coordinator-health", Context.MODE_PRIVATE)
+                        .getLong("reconciled", 0)
+            )
+            appendLine(
+                "Active/queued runs: ${runs.size}; pending questions: ${runs.sumOf {codec.decodeFromString<Execution>(it.snapshot).pendingInteractions().size}}"
+            )
+            dao.automations().forEach {
+                appendLine("Workflow ${it.name}: ${it.status}; next=${it.nextAt}")
+            }
+            dao.locations().forEach { l ->
+                appendLine(
+                    "Location ${l.name}: ${l.registration}; occupancy=${l.occupancy}; last event=${l.eventAt}; dwell=${l.dwellSeconds}s; cooldown=${l.cooldownSeconds}s"
+                )
+            }
+            dao.observeEvents().first().take(20).forEach {
+                appendLine("Event ${it.at}: ${it.outcome}")
+            }
+            dao.observeDiagnostics().first().take(20).forEach {
+                appendLine("Diagnostic ${it.at}: ${it.message}")
+            }
+        }
+    }
 
     suspend fun saveChecklist(template: ChecklistTemplate) = operations.withLock {
         UUID.fromString(template.id)
@@ -127,7 +198,10 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
                 value.latitude in -90.0..90.0 &&
                 value.longitude in -180.0..180.0 &&
                 value.radius.isFinite() &&
-                value.radius in 100f..100000f
+                value.radius in 100f..100000f &&
+                value.dwellSeconds in 30..86400 &&
+                value.cooldownSeconds in 0..86400 &&
+                value.description.length <= 4096
         )
         dao.saveLocation(value)
         reconcileInternal()
@@ -136,12 +210,24 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
     suspend fun deleteLocation(id: String) = operations.withLock {
         require(
             dao.automations().none {
-                codec.decodeFromString<Definition>(it.definition).trigger.locationId == id
+                id in Dependencies.locations(codec.decodeFromString<Definition>(it.definition))
             }
         ) {
             "This location is referenced by an automation"
         }
-        dao.deleteLocation(id)
+        require(
+            dao.active().none { row ->
+                codec.decodeFromString<Execution>(row.snapshot).capturedDefinitions().any {
+                    id in Dependencies.locations(it)
+                }
+            }
+        ) {
+            "An active captured run uses this location; cancel it first"
+        }
+        db.withTransaction {
+            dao.deleteLocationEvents(id)
+            dao.deleteLocation(id)
+        }
         reconcileInternal()
     }
 
@@ -277,11 +363,13 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
         }
         db.withTransaction {
             dao.deleteExecutions(id)
+            dao.deleteEvents(id)
             dao.deleteAutomation(id)
             dao.variables()
                 .filter { it.owner == id }
                 .forEach { dao.deleteVariable(it.owner, it.name) }
         }
+        EditorDrafts(context).clear(id)
         reconcileInternal()
     }
 
@@ -392,6 +480,23 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
         val initial = dao.execution(id) ?: return
         if (initial.state == State.QUEUED.name) {
             val e = codec.decodeFromString<Execution>(initial.snapshot)
+            val first =
+                dao.active()
+                    .filter {
+                        it.automationId == initial.automationId && it.state == State.QUEUED.name
+                    }
+                    .sortedWith(
+                        compareByDescending<ExecutionEntity> {
+                                codec
+                                    .decodeFromString<Execution>(it.snapshot)
+                                    .definition
+                                    .trigger
+                                    .priority
+                            }
+                            .thenBy { it.updated }
+                    )
+                    .firstOrNull()
+            if (first?.id != id) return
             if (
                 dao.active().count {
                     it.automationId == initial.automationId &&
@@ -621,12 +726,16 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
         db.withTransaction {
             val l = dao.location(id) ?: return@withTransaction
             if (!l.enabled || at < l.eventAt) return@withTransaction
+            val previous = dao.lastLocationEvent(id, transition)?.at
+            val entered = dao.lastLocationEvent(id, "enter")?.at
             if (
                 dao.locationEvent(LocationEventEntity("$id:$transition:$at", id, transition, at)) ==
                     -1L
             )
                 return@withTransaction
-            accepted = true
+            accepted = previous == null || at - previous >= l.cooldownSeconds * 1000L
+            if (transition == "dwell" && entered != null && at - entered < l.dwellSeconds * 1000L)
+                accepted = false
             if (at >= l.eventAt)
                 dao.saveLocation(
                     l.copy(
@@ -780,10 +889,17 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
         drainInternal()
         platform.periodicRecovery()
         db.withTransaction {
-            dao.pruneExecutions(now - 30L * 86400000)
+            dao.pruneExecutions(
+                now - Preferences(context).options.first().getValue("retention").toLong() * 86400000
+            )
             dao.pruneDiagnostics()
             dao.pruneLocationEvents(now - 90L * 86400000)
             dao.pruneEvents(now - 400L * 86400000)
         }
+        context
+            .getSharedPreferences("coordinator-health", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("reconciled", now)
+            .commit()
     }
 }

@@ -65,11 +65,23 @@ class WindowTest {
                 emptyMap(),
                 emptyMap(),
                 "a",
+                occupancy = mapOf("home" to ("INSIDE" to 1000L)),
                 locations = mapOf("home" to LocationState(21.0, 79.0, 150.0, entered = 1000)),
             )
         assertEquals(
             Value(Type.DURATION, "4000"),
             Expressions.evaluate(Expr("dwellDuration", name = "home"), c),
+        )
+        assertEquals(
+            Value.NULL,
+            Expressions.evaluate(Expr("dwellDuration", name = "home"), c.copy(now = 4_000_000)),
+        )
+        assertEquals(
+            Value.NULL,
+            Expressions.evaluate(
+                Expr("dwellDuration", name = "home"),
+                c.copy(occupancy = emptyMap()),
+            ),
         )
         assertEquals(Value.number(21.0), Expressions.evaluate(Expr("latitude", name = "home"), c))
         assertEquals(Value.NULL, Expressions.evaluate(Expr("lastExit", name = "home"), c))

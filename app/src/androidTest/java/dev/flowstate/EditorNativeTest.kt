@@ -3,6 +3,7 @@ package dev.flowstate
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -47,10 +48,19 @@ class EditorNativeTest {
 
     private fun ready() {
         for (i in 0 until 100) {
-            if (js("typeof window.FlowEditor") == "\"object\"" && js("JSON.stringify(FlowEditor.snapshot())").contains("fs_trigger")) return
+            if (
+                js("typeof window.FlowEditor") == "\"object\"" &&
+                    js("JSON.stringify(FlowEditor.snapshot())").contains("fs_trigger")
+            )
+                return
             Thread.sleep(100)
         }
-        fail("Offline editor did not initialize")
+        fail(
+            "Offline editor did not initialize: " +
+                js(
+                    "JSON.stringify({errors:window.FlowEditorErrors,url:location.href,editor:typeof window.FlowEditor,bridge:typeof window.FlowBridge,status:document.getElementById('status').textContent})"
+                )
+        )
     }
 
     @After
@@ -70,7 +80,12 @@ class EditorNativeTest {
         compose.waitUntil(15000) {
             compose.onAllNodesWithText("Edit blocks").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onAllNodesWithText("Edit blocks").onFirst().performScrollTo().performClick()
+        compose
+            .onAllNodesWithText("Edit blocks")
+            .onFirst()
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick) { it() }
+        compose.waitForIdle()
         ready()
         js("document.getElementById('validate').click()")
         var status = ""

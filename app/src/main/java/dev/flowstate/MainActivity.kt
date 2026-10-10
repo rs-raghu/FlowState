@@ -5,8 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
+import dagger.hilt.android.AndroidEntryPoint
 import dev.flowstate.ui.*
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val vm by lazy { ViewModelProvider(this)[FlowViewModel::class.java] }
 

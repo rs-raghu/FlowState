@@ -17,6 +17,7 @@ fun Simulator(
     definitions: List<Definition>,
     onHighlight: (String) -> Unit = {},
     initial: Execution? = null,
+    locationModels: Map<String, LocationState> = emptyMap(),
 ) {
     val simulation =
         remember(d, initial?.id) {
@@ -26,6 +27,7 @@ fun Simulator(
                 initial?.started ?: System.currentTimeMillis(),
                 ZoneId.systemDefault().id,
                 initial,
+                locationModels,
             )
         }
     var revision by remember { mutableIntStateOf(0) }
@@ -33,6 +35,15 @@ fun Simulator(
     var zone by remember { mutableStateOf(simulation.zone) }
     var error by remember { mutableStateOf<String?>(null) }
     var location by remember { mutableStateOf(d.trigger.locationId) }
+    var latitude by remember {
+        mutableStateOf((locationModels[d.trigger.locationId]?.latitude ?: 0.0).toString())
+    }
+    var longitude by remember {
+        mutableStateOf((locationModels[d.trigger.locationId]?.longitude ?: 0.0).toString())
+    }
+    var radius by remember {
+        mutableStateOf((locationModels[d.trigger.locationId]?.radius ?: 150.0).toString())
+    }
     var variable by remember { mutableStateOf("") }
     var variableValue by remember { mutableStateOf("") }
     var variableScope by remember { mutableStateOf(Scope.LOCAL) }
@@ -124,6 +135,24 @@ fun Simulator(
                 }
             }
         }
+        OutlinedTextField(latitude, { latitude = it }, label = { Text("Fake latitude") })
+        OutlinedTextField(longitude, { longitude = it }, label = { Text("Fake longitude") })
+        OutlinedTextField(radius, { radius = it }, label = { Text("Fake radius metres") })
+        TextButton(
+            onClick = {
+                action {
+                    simulation.location(
+                        location,
+                        latitude.toDouble(),
+                        longitude.toDouble(),
+                        radius.toDouble(),
+                    )
+                }
+            }
+        ) {
+            Text("Set simulated coordinates")
+        }
+        Text("Location history: ${simulation.locations[location]}")
         Text("Occupancy: ${simulation.occupancy.mapValues {it.value.first}}")
         Text("Simulated permissions", style = MaterialTheme.typography.titleMedium)
         simulation.permissions.forEach { (name, allowed) ->
