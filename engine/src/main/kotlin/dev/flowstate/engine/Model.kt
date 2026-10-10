@@ -132,6 +132,28 @@ data class Definition(
     val trigger: Trigger = Trigger(),
     val maxSteps: Int = 10000,
     val maxIterations: Int = 1000,
+    val checklists: Map<String, ChecklistTemplate> = emptyMap(),
+)
+
+@Serializable
+data class ChecklistItem(
+    val label: String,
+    val required: Boolean = true,
+    val note: String = "",
+    val group: String = "",
+)
+
+@Serializable
+data class ChecklistTemplate(val id: String, val name: String, val items: List<ChecklistItem>)
+
+@Serializable
+data class ReminderConfig(
+    val channel: String = "normal",
+    val category: String = "reminder",
+    val ongoing: Boolean = false,
+    val group: String = "flowstate",
+    val target: String = "",
+    val expireSeconds: Long = 0,
 )
 
 @Serializable
@@ -176,6 +198,14 @@ data class Interaction(
     val completed: List<Int> = emptyList(),
     val snoozes: Int = 0,
     val snoozedUntil: Long? = null,
+    val snoozeMinutes: List<Long> = listOf(5, 15),
+    val maxSnoozes: Int = 3,
+    val notes: Map<Int, String> = emptyMap(),
+    val groups: Map<Int, String> = emptyMap(),
+    val dismissed: Boolean = false,
+    val reminderAt: Long? = null,
+    val reminders: Int = 0,
+    val notification: ReminderConfig = ReminderConfig(),
 )
 
 @Serializable data class Trace(val at: Long, val node: String, val detail: String)
@@ -230,7 +260,11 @@ fun Execution.nextWake(): Long? =
     else
         (if (branches.isNotEmpty()) branches.mapNotNull { it.nextWake() }
             else if (interaction != null)
-                listOfNotNull(interaction.snoozedUntil, interaction.deadline)
+                listOfNotNull(
+                    interaction.snoozedUntil,
+                    interaction.deadline,
+                    interaction.reminderAt,
+                )
             else listOfNotNull(wakeAt))
             .plus(listOfNotNull(deadline))
             .minOrNull()
@@ -252,6 +286,7 @@ data class Effect(
     val body: String = "",
     val interaction: Interaction? = null,
     val cancelToken: String = "",
+    val notification: ReminderConfig = ReminderConfig(),
 )
 
 data class Tick(

@@ -14,6 +14,7 @@ import dev.flowstate.engine.*
 import java.io.ByteArrayInputStream
 import java.util.UUID
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -100,6 +101,12 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                                 ),
                                             )
                                             put(
+                                                "templates",
+                                                resources(
+                                                    vm.dao.checklists().map { it.id to it.name }
+                                                ),
+                                            )
+                                            put(
                                                 "workflows",
                                                 resources(
                                                     vm.dao
@@ -132,6 +139,12 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                                 a.version + 1,
                                                 vm.locations.value.map { it.id }.toSet(),
                                                 vm.automations.value.map { it.id }.toSet(),
+                                                vm.dao.checklists().associate {
+                                                    it.id to
+                                                        codec.decodeFromString<ChecklistTemplate>(
+                                                            it.payload
+                                                        )
+                                                },
                                             )
                                         when (action) {
                                             "save",

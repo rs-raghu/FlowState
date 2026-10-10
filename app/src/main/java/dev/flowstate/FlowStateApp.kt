@@ -8,7 +8,7 @@ import dev.flowstate.data.FlowDatabase
 class FlowStateApp : Application() {
     val database by lazy {
         Room.databaseBuilder(this, FlowDatabase::class.java, "flowstate.db")
-            .addMigrations(FlowDatabase.MIGRATION_1_2)
+            .addMigrations(FlowDatabase.MIGRATION_1_2, FlowDatabase.MIGRATION_2_3)
             .build()
     }
     val coordinator by lazy { Coordinator(database, this) }

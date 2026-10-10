@@ -7,6 +7,7 @@ object Compiler {
     val actions =
         setOf(
             "message",
+            "notifyUpdate",
             "ask",
             "checklist",
             "if",
@@ -87,6 +88,7 @@ object Compiler {
         version: Int,
         locations: Set<String> = emptySet(),
         workflows: Set<String> = emptySet(),
+        templates: Map<String, ChecklistTemplate> = emptyMap(),
     ): Definition {
         require(source.length <= 2_000_000) { "Workspace exceeds 2 MB" }
         val root = codec.parseToJsonElement(SafeInput.json(source)).jsonObject
@@ -297,6 +299,10 @@ object Compiler {
                 nodes = nodes,
                 variables = vars,
                 trigger = trigger,
+                checklists =
+                    templates.filterKeys { template ->
+                        nodes.any { it.fields["TEMPLATE"] == template }
+                    },
             )
         issues += validate(d, locations, workflows)
         if (issues.isNotEmpty()) throw ValidationException(issues)
@@ -454,6 +460,16 @@ object Compiler {
             }
         }
         d.nodes.forEach { n ->
+            if (n.op in setOf("ask", "checklist", "message", "notifyUpdate")) {
+                if ((n.fields["CHANNEL"] ?: "normal") !in setOf("low", "normal", "high"))
+                    issue("Choose low, normal or high notification channel", n.id)
+                if ((n.fields["CATEGORY"] ?: "reminder") !in setOf("reminder", "event", "status"))
+                    issue("Choose reminder, event or status category", n.id)
+                if ((n.fields["EXPIRE"] ?: "0").toLongOrNull()?.let { it in 0..31536000 } != true)
+                    issue("Invalid notification expiration", n.id)
+                if (n.op == "notifyUpdate" && n.fields["TARGET"].isNullOrBlank())
+                    issue("Name the owned notification to update", n.id)
+            }
             if (n.op !in actions) issue("Unsupported node ${n.op}", n.id)
             (n.branches.values + n.next).filterNotNull().forEach {
                 if (it !in ids) issue("Missing target $it", n.id)
@@ -494,6 +510,16 @@ object Compiler {
             )
                 issue("Store responses locally, then SET persistent values", n.id)
             if (n.op in setOf("ask", "checklist")) {
+                val snooze =
+                    (n.fields["SNOOZE"] ?: "5,15").split(',').map { it.trim().toLongOrNull() }
+                if (snooze.size !in 1..5 || snooze.any { it == null || it !in 1..1440 })
+                    issue("Provide 1–5 snooze durations from 1 to 1440 minutes", n.id)
+                if ((n.fields["MAXSNOOZE"] ?: "3").toIntOrNull()?.let { it in 0..10 } != true)
+                    issue("Maximum snoozes must be 0–10", n.id)
+                if ((n.fields["FOLLOWUP"] ?: "0").toLongOrNull()?.let { it in 0..604800 } != true)
+                    issue("Follow-up must be disabled (0) or within seven days", n.id)
+                if (!n.fields["TEMPLATE"].isNullOrBlank() && n.fields["TEMPLATE"] !in d.checklists)
+                    issue("Select an existing checklist template", n.id)
                 val options =
                     (n.fields["OPTIONS"] ?: "Option 1|Option 2").split('|').filter {
                         it.isNotBlank()
@@ -501,7 +527,9 @@ object Compiler {
                 if (
                     options.size > 100 ||
                         options.size != options.toSet().size ||
-                        (n.op == "checklist" || n.fields["KIND"] == "choice") && options.isEmpty()
+                        (n.op == "checklist" || n.fields["KIND"] == "choice") &&
+                            options.isEmpty() &&
+                            n.fields["TEMPLATE"].isNullOrBlank()
                 )
                     issue("Provide 1–100 distinct options/items", n.id)
                 if (((n.fields["TIMEOUT"] ?: "900").toLongOrNull() ?: -1L) !in 0L..31536000L)

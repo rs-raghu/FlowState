@@ -3,8 +3,20 @@ package dev.flowstate.engine
 import java.util.UUID
 
 class Runtime(private val resolve: (String) -> Definition? = { null }) {
-    fun start(id: String, d: Definition, now: Long): Execution {
+    fun start(
+        id: String,
+        d: Definition,
+        now: Long,
+        templates: Map<String, ChecklistTemplate> = emptyMap(),
+    ): Execution {
         val library = mutableMapOf<String, Definition>()
+        fun captured(definition: Definition) =
+            definition.copy(
+                checklists =
+                    (definition.checklists + templates).filterKeys { id ->
+                        definition.nodes.any { it.fields["TEMPLATE"] == id }
+                    }
+            )
         fun capture(definition: Definition, path: Set<String>) {
             require(path.size < 8 && definition.id !in path) {
                 "Recursive or excessive workflow dependency"
@@ -17,14 +29,14 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                             ?: error("Referenced workflow is missing or disabled")
                     if (child.id !in library) {
                         capture(child, path + definition.id)
-                        library[child.id] = child
+                        library[child.id] = captured(child)
                     }
                 }
         }
         capture(d, emptySet())
         return Execution(
             id,
-            d,
+            captured(d),
             cursor = d.entry,
             started = now,
             locals =
@@ -104,7 +116,25 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
         try {
             require(parallelDepth <= 16) { "Parallel nesting limit exceeded" }
             if (e.state == State.WAITING_FOR_USER) {
-                val interaction = requireNotNull(e.interaction)
+                var interaction = requireNotNull(e.interaction)
+                if (
+                    interaction.reminderAt?.let { now >= it } == true &&
+                        interaction.reminders == 0 &&
+                        interaction.deadline?.let { now < it } != false
+                ) {
+                    interaction =
+                        interaction.copy(reminderAt = null, reminders = 1, dismissed = false)
+                    e = e.copy(interaction = interaction).let { it.copy(wakeAt = it.nextWake()) }
+                    effects +=
+                        Effect(
+                            "${e.id}:${interaction.token}:followup",
+                            "interaction",
+                            interaction.title,
+                            interaction = interaction,
+                            notification = interaction.notification.copy(channel = "high"),
+                        )
+                    record(interaction.node, "One configured follow-up reminder")
+                }
                 if (interaction.deadline == null || now < interaction.deadline)
                     return Tick(e, effects, values)
                 val node = e.definition.nodes.first { it.id == interaction.node }
@@ -171,18 +201,26 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 record(n.id, "Execute ${n.op}")
                 fun f(name: String, default: String = "") = n.fields[name] ?: default
                 when (n.op) {
-                    "message" -> {
+                    "message",
+                    "notifyUpdate" -> {
                         effects +=
                             Effect(
                                 "${e.id}:${e.steps}",
                                 "message",
                                 f("TITLE", "FlowState"),
                                 f("BODY"),
+                                notification = reminderConfig(n),
                             )
                         e = e.copy(cursor = n.next)
                     }
                     "notifyCancel" -> {
-                        effects += Effect("${e.id}:${e.steps}", "cancel", e.id)
+                        effects +=
+                            Effect(
+                                "${e.id}:${e.steps}",
+                                "cancelOwned",
+                                e.id,
+                                notification = reminderConfig(n),
+                            )
                         e = e.copy(cursor = n.next)
                     }
                     "if" -> {
@@ -204,6 +242,13 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                     "ask",
                     "checklist" -> {
                         val kind = if (n.op == "checklist") "checklist" else f("KIND", "choice")
+                        val template =
+                            f("TEMPLATE")
+                                .takeIf { it.isNotEmpty() }
+                                ?.let {
+                                    e.definition.checklists[it]
+                                        ?: error("Checklist template is missing")
+                                }
                         val options =
                             when (kind) {
                                 "yesno",
@@ -211,9 +256,12 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                 "text",
                                 "number" -> emptyList()
                                 else ->
-                                    f("OPTIONS", "Option 1|Option 2").split('|').filter {
-                                        it.isNotBlank()
-                                    }
+                                    (template?.items?.map {
+                                            (if (it.required) "" else "?") + it.label
+                                        } ?: f("OPTIONS", "Option 1|Option 2").split('|'))
+                                        .filter {
+                                            it.isNotBlank()
+                                        }
                             }
                         require(options.size <= 100)
                         val timeout = f("TIMEOUT", "900").toLong()
@@ -232,12 +280,33 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                     if (kind == "checklist")
                                         options.indices.filter { !options[it].startsWith("?") }
                                     else emptyList(),
+                                snoozeMinutes =
+                                    f("SNOOZE", "5,15").split(',').map { it.trim().toLong() },
+                                maxSnoozes = f("MAXSNOOZE", "3").toInt(),
+                                notes =
+                                    template
+                                        ?.items
+                                        ?.mapIndexed { index, item -> index to item.note }
+                                        ?.toMap() ?: emptyMap(),
+                                groups =
+                                    template
+                                        ?.items
+                                        ?.mapIndexed { index, item -> index to item.group }
+                                        ?.toMap() ?: emptyMap(),
+                                reminderAt =
+                                    f("FOLLOWUP", "0")
+                                        .toLong()
+                                        .takeIf { it > 0 }
+                                        ?.let { now + it * 1000 },
+                                notification = reminderConfig(n),
                             )
                         e =
                             e.copy(
                                 state = State.WAITING_FOR_USER,
                                 interaction = interaction,
-                                wakeAt = interaction.deadline,
+                                wakeAt =
+                                    listOfNotNull(interaction.deadline, interaction.reminderAt)
+                                        .minOrNull(),
                             )
                         effects +=
                             Effect(
@@ -245,6 +314,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                 "interaction",
                                 interaction.title,
                                 interaction = interaction,
+                                notification = interaction.notification,
                             )
                     }
                     "wait" -> {
@@ -747,6 +817,19 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
             trace = (e.trace + Trace(now, n.id, "Response routed to $branch")).takeLast(1000),
         )
     }
+
+    private fun reminderConfig(n: Node) =
+        ReminderConfig(
+            channel = n.fields["CHANNEL"] ?: "normal",
+            category = n.fields["CATEGORY"] ?: "reminder",
+            ongoing = n.fields["ONGOING"] == "true",
+            group = n.fields["GROUP"] ?: "flowstate",
+            target =
+                n.fields["TARGET"].orEmpty().ifBlank {
+                    if (n.op in setOf("message", "notifyUpdate")) n.id else ""
+                },
+            expireSeconds = (n.fields["EXPIRE"] ?: "0").toLong(),
+        )
 
     companion object {
         val terminal = setOf(State.COMPLETED, State.CANCELLED, State.FAILED, State.EXPIRED)

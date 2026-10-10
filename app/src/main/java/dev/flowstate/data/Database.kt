@@ -99,6 +99,14 @@ data class LocationEventEntity(
     val at: Long,
 )
 
+@Entity(tableName = "checklist_templates")
+data class ChecklistEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val payload: String,
+    val updated: Long,
+)
+
 @Dao
 interface FlowDao {
     @Query("SELECT * FROM automations ORDER BY updated DESC")
@@ -206,6 +214,15 @@ interface FlowDao {
 
     @Query("DELETE FROM event_ledger WHERE at<:before AND `key` NOT LIKE '%:frequency:entry:%'")
     suspend fun pruneEvents(before: Long)
+
+    @Query("SELECT * FROM checklist_templates ORDER BY name")
+    fun observeChecklists(): Flow<List<ChecklistEntity>>
+
+    @Query("SELECT * FROM checklist_templates") suspend fun checklists(): List<ChecklistEntity>
+
+    @Upsert suspend fun saveChecklist(value: ChecklistEntity)
+
+    @Query("DELETE FROM checklist_templates WHERE id=:id") suspend fun deleteChecklist(id: String)
 }
 
 @Database(
@@ -219,14 +236,23 @@ interface FlowDao {
             DiagnosticEntity::class,
             EventEntity::class,
             LocationEventEntity::class,
+            ChecklistEntity::class,
         ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class FlowDatabase : RoomDatabase() {
     abstract fun dao(): FlowDao
 
     companion object {
+        val MIGRATION_2_3 =
+            object : Migration(2, 3) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS checklist_templates (id TEXT NOT NULL, name TEXT NOT NULL, payload TEXT NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY(id))"
+                    )
+                }
+            }
         val MIGRATION_1_2 =
             object : Migration(1, 2) {
                 override fun migrate(db: SupportSQLiteDatabase) {

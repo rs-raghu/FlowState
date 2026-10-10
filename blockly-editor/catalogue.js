@@ -1,12 +1,14 @@
 export const types = ['BOOLEAN','INTEGER','DECIMAL','STRING','INSTANT','DURATION','LIST','NULL'];
-let locations=[],workflows=[];
-export function setResources(value){locations=value.locations||[];workflows=value.workflows||[];}
-const resource=(name,kind)=>({type:'field_dropdown',name,options:()=>{const list=kind==='location'?locations:workflows;return list.length?list.map(x=>[x.name,x.id]):[['Select a saved '+kind,'']];}});
+let locations=[],workflows=[],templates=[];
+export function setResources(value){locations=value.locations||[];workflows=value.workflows||[];templates=value.templates||[];}
+const resource=(name,kind)=>({type:'field_dropdown',name,options:()=>{const list=kind==='location'?locations:kind==='template'?templates:workflows;if(kind==='template')return [['Inline items',''],...list.map(x=>[x.name,x.id])];return list.length?list.map(x=>[x.name,x.id]):[['Select a saved '+kind,'']];}});
 const text=(name,value='')=>({type:'field_input',name,text:value});
 const number=(name,value,min=0,max=31536000)=>({type:'field_number',name,value,min,max,precision:1});
 const dropdown=(name,values)=>({type:'field_dropdown',name,options:values.map(x=>[x,x])});
 const expr=(name,check)=>({type:'input_value',name,...(check?{check}: {})});
 const body=name=>({type:'input_statement',name});
+const reminder=()=>[dropdown('CHANNEL',['normal','low','high']),dropdown('CATEGORY',['reminder','event','status']),dropdown('ONGOING',['false','true']),text('GROUP','flowstate'),text('TARGET'),number('EXPIRE',0)];
+const interaction=()=>[text('SNOOZE','5,15'),number('MAXSNOOZE',3,0,10),number('FOLLOWUP',0,0,604800)];
 const scope=()=>dropdown('SCOPE',['LOCAL','AUTOMATION','GLOBAL']);
 function block(type,label,args,colour=175,output){
   const def={type:'fs_'+type,message0:label.split(' / ')[0],args0:[],colour,tooltip:label+' — configure fields and connect typed inputs. Version 1.',helpUrl:''};
@@ -17,9 +19,10 @@ function block(type,label,args,colour=175,output){
 export const definitions=[
  {...block('trigger','WHEN kind / times / zone / repeat / days / dates / interval / start / end / location / event / cooldown / catch-up / window day',[
  dropdown('KIND',['manual','time','location']),text('TIMES','09:00'),text('ZONE','device'),dropdown('RECURRENCE',['daily','weekdays','weekly','monthly','dates','interval','once','dailyWindow','weeklyWindow','monthlyWindow']),text('DAYS','1,2,3,4,5,6,7'),text('DATES'),number('INTERVAL',1,1,3650),text('START'),text('END'),resource('LOCATION','location'),dropdown('TRANSITION',['enter','exit','dwell']),number('COOLDOWN',300),dropdown('CATCHUP',['skip','grace','window','record','ask']),number('WINDOWDAY',5,1,7),text('ELIGIBLEFROM'),text('ELIGIBLETO'),dropdown('CONCURRENCY',['parallel','ignore','queue','replace']),number('MAXACTIVE',4,1,4),dropdown('FREQUENCY',['cooldown','daily','weekly','entry','completion','unlimited']),dropdown('PRIORITY',['0','1','-1'])],40),previousStatement:undefined},
- block('message','SHOW MESSAGE title / body',[text('TITLE','Reminder'),text('BODY','Take your essentials')]),
- block('ask','ASK kind / title / choices separated by | / response variable / scope / timeout seconds (0 never) / min / max / first choice or valid input / second / other / cancel / timeout',[dropdown('KIND',['choice','yesno','text','number','confirm']),text('TITLE','Where are you going?'),text('OPTIONS','Class|Gym|Other'),text('NAME'),scope(),number('TIMEOUT',900),text('MIN'),text('MAX'),body('YES'),body('NO'),body('OTHER'),body('CANCEL'),body('TIMEOUT')],275),
- block('checklist','CHECKLIST title / items separated by | (?optional) / timeout / complete / cancel / timeout',[text('TITLE','Essentials'),text('OPTIONS','Keys|Wallet|?Water'),number('TIMEOUT',900),body('DONE'),body('CANCEL'),body('TIMEOUT')],275),
+ block('message','SHOW MESSAGE title / body',[text('TITLE','Reminder'),text('BODY','Take your essentials'),...reminder()]),
+ block('notifyUpdate','UPDATE owned notification',[text('TITLE','Reminder'),text('BODY'),...reminder()]),
+ block('ask','ASK kind / title / choices separated by | / response variable / scope / timeout seconds (0 never) / min / max / first choice or valid input / second / other / cancel / timeout',[dropdown('KIND',['choice','yesno','text','number','confirm']),text('TITLE','Where are you going?'),text('OPTIONS','Class|Gym|Other'),text('NAME'),scope(),number('TIMEOUT',900),text('MIN'),text('MAX'),body('YES'),body('NO'),body('OTHER'),body('CANCEL'),body('TIMEOUT'),...reminder(),...interaction()],275),
+ block('checklist','CHECKLIST title / items separated by | (?optional) / timeout / complete / cancel / timeout',[text('TITLE','Essentials'),resource('TEMPLATE','template'),text('OPTIONS','Keys|Wallet|?Water'),number('TIMEOUT',900),body('DONE'),body('CANCEL'),body('TIMEOUT'),...reminder(),...interaction()],275),
  block('if','IF / then / else',[expr('TEST','Boolean'),body('YES'),body('NO')],210),
  block('switch','SWITCH value / case 1 / case 2 / first / second / default',[expr('VALUE'),text('CASE1','Class'),text('CASE2','Gym'),body('YES'),body('NO'),body('OTHER')],210),
  block('wait','WAIT seconds',[number('SECONDS',60,1)],55),
@@ -43,7 +46,7 @@ export const definitions=[
  block('log','LOG private trace message',[text('MESSAGE','Checkpoint')],0),
  block('assert','ASSERT condition / error message',[expr('TEST','Boolean'),text('MESSAGE','Assertion failed')],0),
  block('breakpoint','SIMULATION breakpoint',[],0),
- block('notifyCancel','CANCEL this execution notification',[],175)
+ block('notifyCancel','CANCEL owned notification (blank = all)',[text('TARGET')],175)
 ];
 export function register(Blockly){
  Blockly.common.defineBlocksWithJsonArray(definitions);
@@ -73,7 +76,7 @@ export function register(Blockly){
  }
 }
 export const toolbox={kind:'categoryToolbox',contents:[
- ['Triggers',40,['trigger']],['Logic',210,['if','switch','expr','value']],['Interactions',275,['ask','checklist','message','notifyCancel']],['Time & loops',55,['wait','waitUntil','waitClock','waitCondition','setTimeout','repeat','while','break','continue']],['Variables',330,['variable','set','get','delete']],['Control',120,['call','return','try','parallel','stop']],['Debug',0,['log','assert','breakpoint']]
+ ['Triggers',40,['trigger']],['Logic',210,['if','switch','expr','value']],['Interactions',275,['ask','checklist','message','notifyUpdate','notifyCancel']],['Time & loops',55,['wait','waitUntil','waitClock','waitCondition','setTimeout','repeat','while','break','continue']],['Variables',330,['variable','set','get','delete']],['Control',120,['call','return','try','parallel','stop']],['Debug',0,['log','assert','breakpoint']]
 ].map(([name,colour,blocks])=>({kind:'category',name,colour:String(colour),contents:blocks.map(type=>({kind:'block',type:'fs_'+type}))}))};
 export function initialWorkspace(template='blank'){
  const trigger={type:'fs_trigger',id:crypto.randomUUID(),x:30,y:40,fields:{KIND:'manual'}};

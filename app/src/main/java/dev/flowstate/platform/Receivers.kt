@@ -32,6 +32,22 @@ class ResponseReceiver : BroadcastReceiver() {
     }
 }
 
+class NotificationDismissReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        Platform(context)
+            .rememberDismissal(
+                intent.getStringExtra("id") ?: return,
+                intent.getStringExtra("token") ?: return,
+            )
+        Platform(context)
+            .enqueue(
+                "dismiss",
+                intent.getStringExtra("id") ?: return,
+                token = intent.getStringExtra("token") ?: return,
+            )
+    }
+}
+
 class RecoveryReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (
@@ -91,6 +107,11 @@ class EngineWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                         inputData.getInt("version", 0),
                     )
                 "execution" -> app.coordinator.drive(inputData.getString("id")!!)
+                "dismiss" ->
+                    app.coordinator.dismiss(
+                        inputData.getString("id")!!,
+                        inputData.getString("token")!!,
+                    )
                 "response" ->
                     app.coordinator.respond(
                         inputData.getString("id")!!,

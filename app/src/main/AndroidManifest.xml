@@ -11,6 +11,7 @@
         </activity>
         <receiver android:name=".platform.AlarmReceiver" android:exported="false" />
         <receiver android:name=".platform.ResponseReceiver" android:exported="false" />
+        <receiver android:name=".platform.NotificationDismissReceiver" android:exported="false" />
         <receiver android:name=".platform.GeofenceReceiver" android:exported="false" />
         <receiver android:name=".platform.RecoveryReceiver" android:exported="false">
             <intent-filter>

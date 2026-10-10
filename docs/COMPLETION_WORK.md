@@ -10,9 +10,16 @@ Completed geofence registration fingerprinting keyed by configuration, permissio
 
 Verification: four new core boundary regressions; native upgrade/queue/replace tests added. Automated build and emulator results will be recorded after execution.
 
+## Rich reminders and reusable checklists
+
+Implemented three priority channels, categories, ongoing/group settings, named owned update/cancel targets and notification expiry. Interactions capture configurable snooze choices/limits and one optional follow-up. Pending questions can be restored after reopening; dismissed questions stay in Activity without being reposted unless an explicit snooze/follow-up requests it. Dismissal is persisted before asynchronous processing.
+
+Checklist templates support native create/edit/delete/duplicate, item order, required/optional items, groups and notes. Only referenced templates are captured in each run; later edits cannot change pending items. References protect template deletion. Room schema 3 has an explicit 2-to-3 migration.
+
+Verification: 56 core tests and four editor tests pass; debug assembly, lint and native test compilation pass. Native ownership/template regressions are added for the emulator run.
+
 ## Remaining software stages
 
-- Rich notifications and reusable checklist templates.
 - Multi-value calls, typed lists and complete validation diagnostics.
 - Simulator, native UI and backup/personal settings completion.
 - Current Android stack migration and release runtime/platform verification.

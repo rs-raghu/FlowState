@@ -236,6 +236,14 @@ class Platform(private val context: Context) {
 
     fun cancelNotification(execution: String, token: String? = null) {
         val manager = context.getSystemService(NotificationManager::class.java)
+        val dismissed = context.getSharedPreferences("dismissed-reminders", Context.MODE_PRIVATE)
+        val edit = dismissed.edit()
+        dismissed.all.keys
+            .filter {
+                if (token == null) it.startsWith("$execution:") else it == "$execution:$token"
+            }
+            .forEach { edit.remove(it) }
+        edit.commit()
         if (token != null) manager.cancel("$execution:question:$token", 1)
         else {
             manager.cancel(execution, 1)
@@ -247,21 +255,66 @@ class Platform(private val context: Context) {
 
     fun cancelAllExecutionNotifications(execution: String) {
         cancelNotification(execution)
-        NotificationManagerCompat.from(context).cancel("$execution:message", 1)
+        context
+            .getSystemService(NotificationManager::class.java)
+            .activeNotifications
+            .filter { it.tag?.startsWith("$execution:message") == true }
+            .forEach { NotificationManagerCompat.from(context).cancel(it.tag, it.id) }
+    }
+
+    fun hasInteractionNotification(execution: String, token: String) =
+        context.getSystemService(NotificationManager::class.java).activeNotifications.any {
+            it.tag == "$execution:question:$token"
+        }
+
+    fun rememberDismissal(execution: String, token: String) {
+        context
+            .getSharedPreferences("dismissed-reminders", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("$execution:$token", true)
+            .commit()
+    }
+
+    fun wasDismissed(execution: String, token: String) =
+        context
+            .getSharedPreferences("dismissed-reminders", Context.MODE_PRIVATE)
+            .getBoolean("$execution:$token", false)
+
+    fun clearDismissal(execution: String, token: String) {
+        context
+            .getSharedPreferences("dismissed-reminders", Context.MODE_PRIVATE)
+            .edit()
+            .remove("$execution:$token")
+            .commit()
     }
 
     fun notification(execution: String, effect: Effect): Boolean {
+        if (effect.kind == "cancelOwned") {
+            if (effect.notification.target.isBlank()) cancelAllExecutionNotifications(execution)
+            else
+                NotificationManagerCompat.from(context)
+                    .cancel("$execution:message:${Uri.encode(effect.notification.target)}", 1)
+            return true
+        }
         if (effect.kind == "cancel") {
             cancelNotification(execution, effect.cancelToken.ifBlank { null })
             return true
         }
         if (!notificationsAllowed()) return false
         val manager = context.getSystemService(NotificationManager::class.java)
+        val config = effect.notification
+        val channel = "workflows-${config.channel}"
+        val importance =
+            when (config.channel) {
+                "low" -> NotificationManager.IMPORTANCE_LOW
+                "high" -> NotificationManager.IMPORTANCE_HIGH
+                else -> NotificationManager.IMPORTANCE_DEFAULT
+            }
         manager.createNotificationChannel(
             NotificationChannel(
-                "workflows",
-                "Workflow interactions",
-                NotificationManager.IMPORTANCE_DEFAULT,
+                channel,
+                "Workflow ${config.channel} priority",
+                importance,
             )
         )
         val open =
@@ -274,7 +327,7 @@ class Platform(private val context: Context) {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         val n =
-            NotificationCompat.Builder(context, "workflows")
+            NotificationCompat.Builder(context, channel)
                 .setSmallIcon(android.R.drawable.ic_popup_reminder)
                 .setContentTitle(effect.title)
                 .setContentText(
@@ -284,8 +337,30 @@ class Platform(private val context: Context) {
                 .setContentIntent(open)
                 .setAutoCancel(effect.interaction == null)
                 .setOnlyAlertOnce(true)
-                .setGroup("flowstate")
+                .setGroup(config.group.ifBlank { "flowstate" })
+                .setCategory(config.category)
+                .setOngoing(config.ongoing)
+                .setPriority(
+                    when (config.channel) {
+                        "low" -> NotificationCompat.PRIORITY_LOW
+                        "high" -> NotificationCompat.PRIORITY_HIGH
+                        else -> NotificationCompat.PRIORITY_DEFAULT
+                    }
+                )
+        if (config.expireSeconds > 0) n.setTimeoutAfter(config.expireSeconds * 1000)
         effect.interaction?.let { i ->
+            clearDismissal(execution, i.token)
+            val dismiss =
+                PendingIntent.getBroadcast(
+                    context,
+                    0,
+                    Intent(context, NotificationDismissReceiver::class.java)
+                        .setData(Uri.parse("flowstate://dismiss/$execution/${i.token}"))
+                        .putExtra("id", execution)
+                        .putExtra("token", i.token),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            n.setDeleteIntent(dismiss)
             n.setContentText("Open to respond · ${i.kind}")
             if (i.kind in setOf("choice", "yesno", "confirm"))
                 i.options.take(2).forEachIndexed { index, label ->
@@ -313,7 +388,7 @@ class Platform(private val context: Context) {
             NotificationManagerCompat.from(context)
                 .notify(
                     effect.interaction?.let { "$execution:question:${it.token}" }
-                        ?: "$execution:message",
+                        ?: "$execution:message:${Uri.encode(config.target.ifBlank { effect.id })}",
                     1,
                     n.build(),
                 )

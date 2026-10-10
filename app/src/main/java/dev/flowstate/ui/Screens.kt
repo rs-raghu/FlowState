@@ -660,6 +660,9 @@ private fun InteractionPanel(vm: FlowViewModel, id: String, i: Interaction) {
         }
         "checklist" -> {
             i.options.forEachIndexed { index, label ->
+                i.groups[index]
+                    ?.takeIf { it.isNotBlank() && (index == 0 || it != i.groups[index - 1]) }
+                    ?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
                 Row {
                     Checkbox(
                         index in checked,
@@ -672,6 +675,9 @@ private fun InteractionPanel(vm: FlowViewModel, id: String, i: Interaction) {
                         label.removePrefix("?") + (if (index !in i.required) " (optional)" else "")
                     )
                 }
+                i.notes[index]
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
             Button(
                 enabled = i.required.all { it in checked },
@@ -690,13 +696,15 @@ private fun InteractionPanel(vm: FlowViewModel, id: String, i: Interaction) {
                 }
             }
     }
-    Row {
+    Column {
         TextButton(onClick = { vm.respond(id, i.token, "__cancel") }) { Text("Cancel") }
-        TextButton(enabled = i.snoozes < 3, onClick = { vm.snooze(id, 5, i.token) }) {
-            Text("Snooze 5 min")
-        }
-        TextButton(enabled = i.snoozes < 3, onClick = { vm.snooze(id, 15, i.token) }) {
-            Text("15 min")
+        i.snoozeMinutes.forEach { minutes ->
+            TextButton(
+                enabled = i.snoozes < i.maxSnoozes,
+                onClick = { vm.snooze(id, minutes, i.token) },
+            ) {
+                Text("Snooze $minutes min")
+            }
         }
     }
 }
@@ -753,6 +761,7 @@ private fun SettingsScreen(
         }
     Content {
         Title("Settings", "Permissions, backup and local diagnostics.")
+        ChecklistManager(vm)
         Text("Theme", style = MaterialTheme.typography.titleMedium)
         Row {
             listOf("system", "light", "dark").forEach { t ->
