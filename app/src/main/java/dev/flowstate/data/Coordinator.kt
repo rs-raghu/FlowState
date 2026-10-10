@@ -203,6 +203,8 @@ class Coordinator(private val db: FlowDatabase, context: Context) {
                 .associate { it.id to codec.decodeFromString<Definition>(it.definition) }
                 .toMutableMap()
         all[id] = d
+        val callIssues = Compiler.validateCalls(all.values)
+        if (callIssues.isNotEmpty()) throw ValidationException(callIssues)
         val activeDefinitions =
             dao.active().flatMap { row ->
                 val execution = codec.decodeFromString<Execution>(row.snapshot)

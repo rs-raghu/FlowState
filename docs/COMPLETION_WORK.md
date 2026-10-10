@@ -18,9 +18,14 @@ Checklist templates support native create/edit/delete/duplicate, item order, req
 
 Verification: 56 core tests and four editor tests pass; debug assembly, lint and native test compilation pass. Native ownership/template regressions are added for the emulator run.
 
+## Workflow bindings and diagnostics
+
+CALL supports up to 20 named expression parameters, named callee-to-caller local output bindings, and returned execution status. Legacy single-input/result calls continue to work. Type and dependency checks run before saving/importing; immutable bindings survive durable waits. Typed lists have constructors, optional declared element types and checked updates. Native field failures include a block ID, code and correction; the editor shows severity/code/remediation and legal indefinite-wait/high-priority warnings.
+
+Verification: 60 core tests pass, including multi-value wait/restart, incompatible output bindings, typed-list updates and malformed-field attribution. Debug/native test compilation pass. Two editor roundtrip regressions cover dynamic list and parameter inputs.
+
 ## Remaining software stages
 
-- Multi-value calls, typed lists and complete validation diagnostics.
 - Simulator, native UI and backup/personal settings completion.
 - Current Android stack migration and release runtime/platform verification.
 - Final requirement audit and APK/handoff documentation.

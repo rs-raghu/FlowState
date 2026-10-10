@@ -33,12 +33,13 @@ export const definitions=[
  block('repeat','REPEAT bounded times / body',[number('LIMIT',3,1,1000),body('DO')],120),
  block('while','WHILE condition / max iterations / body',[expr('TEST','Boolean'),number('LIMIT',100,1,1000),body('DO')],120),
  block('break','BREAK loop',[],120),block('continue','CONTINUE loop',[],120),block('stop','STOP workflow',[],120),block('return','RETURN value (optional)',[expr('VALUE')],120),
- block('call','CALL workflow / input variable name / input value / output local variable name',[resource('WORKFLOW','workflow'),text('INPUTNAME'),expr('INPUT'),text('OUTPUTNAME')],120),
+ block('call','CALL workflow / input variable name / input value / output local variable name',[resource('WORKFLOW','workflow'),text('INPUTNAME'),expr('INPUT'),text('OUTPUTNAME'),text('INPUTNAMES'),text('OUTPUTS'),text('STATUSNAME')],120),
  block('try','TRY / handle error',[body('DO'),body('ERROR')],120),
  block('parallel','PARALLEL branches / A / B / join both (local conflicts fail)',[body('A'),body('B')],120),
- block('variable','DECLARE name / type / scope / default (blank = null)',[text('NAME','answer'),dropdown('TYPE',types),scope(),text('DEFAULT')],330),
+ block('variable','DECLARE name / type / scope / default (blank = null)',[text('NAME','answer'),dropdown('TYPE',types),{type:'field_dropdown',name:'ELEMENTTYPE',options:[['Any',''],...types.map(t=>[t,t])]},scope(),text('DEFAULT')],330),
  block('set','SET variable / scope / value',[text('NAME','answer'),scope(),expr('VALUE')],330),
  block('delete','RESET variable value / scope',[text('NAME','answer'),scope()],330),
+ block('list','TYPED LIST',[dropdown('TYPE',types),number('COUNT',2,0,100)],300,'Any'),
  block('get','GET variable / scope',[text('NAME','answer'),scope()],330,'Any'),
  block('value','VALUE type / value (duration seconds, instant ISO, list |)',[dropdown('TYPE',types),text('VALUE','Hello')],300,'Any'),
  block('expr','EXPRESSION operation / location ID when occupancy / A / B / C',[
@@ -65,8 +66,11 @@ export function register(Blockly){
    this.loadExtraState=state=>{if(state.version!==undefined&&state.version!==1)throw Error('Unsupported block version');this.updateChoices(Math.min(100,state.choices||0));};
    this.setOnChange(()=>{const kind=this.getFieldValue('KIND');this.updateChoices(kind==='choice'?Math.min(100,(this.getFieldValue('OPTIONS')||'').split('|').filter(x=>x.trim()).length):0);});
  };
+ for(const [type,field,inputKey,stateKey] of [['fs_call','INPUTNAMES','PARAM','parameters'],['fs_list','COUNT','ITEM','items']]) {
+   const init=Blockly.Blocks[type].init;Blockly.Blocks[type].init=function(){init.call(this);this.dynamicCount=0;this.updateDynamic=count=>{for(let i=this.dynamicCount;i<count;i++)this.appendValueInput(inputKey+i).appendField(inputKey+' '+(i+1));for(let i=this.dynamicCount-1;i>=count;i--)this.removeInput(inputKey+i);this.dynamicCount=count;};this.saveExtraState=()=>({version:1,[stateKey]:this.dynamicCount});this.loadExtraState=state=>{if(state.version!==undefined&&state.version!==1)throw Error('Unsupported block version');this.updateDynamic(Math.min(type==='fs_call'?20:100,state[stateKey]||0));};this.setOnChange(()=>{const count=type==='fs_call'?(this.getFieldValue(field)||'').split(',').filter(s=>s.trim()).length:Number(this.getFieldValue(field)||0);this.updateDynamic(Math.min(type==='fs_call'?20:100,count));});if(type==='fs_list')this.updateDynamic(2);};
+ }
  // The language has dynamic result types; native validation remains authoritative.
- for(const name of ['fs_value','fs_expr','fs_get']) {
+ for(const name of ['fs_value','fs_expr','fs_get','fs_list']) {
    const original=Blockly.Blocks[name].init;
    Blockly.Blocks[name].init=function(){ original.call(this); this.setOutput(true); if(name==='fs_expr'||name==='fs_value') this.setOnChange(()=>{
      const op=this.getFieldValue('OP'),t=this.getFieldValue('TYPE');
@@ -76,7 +80,7 @@ export function register(Blockly){
  }
 }
 export const toolbox={kind:'categoryToolbox',contents:[
- ['Triggers',40,['trigger']],['Logic',210,['if','switch','expr','value']],['Interactions',275,['ask','checklist','message','notifyUpdate','notifyCancel']],['Time & loops',55,['wait','waitUntil','waitClock','waitCondition','setTimeout','repeat','while','break','continue']],['Variables',330,['variable','set','get','delete']],['Control',120,['call','return','try','parallel','stop']],['Debug',0,['log','assert','breakpoint']]
+ ['Triggers',40,['trigger']],['Logic',210,['if','switch','expr','value','list']],['Interactions',275,['ask','checklist','message','notifyUpdate','notifyCancel']],['Time & loops',55,['wait','waitUntil','waitClock','waitCondition','setTimeout','repeat','while','break','continue']],['Variables',330,['variable','set','get','delete']],['Control',120,['call','return','try','parallel','stop']],['Debug',0,['log','assert','breakpoint']]
 ].map(([name,colour,blocks])=>({kind:'category',name,colour:String(colour),contents:blocks.map(type=>({kind:'block',type:'fs_'+type}))}))};
 export function initialWorkspace(template='blank'){
  const trigger={type:'fs_trigger',id:crypto.randomUUID(),x:30,y:40,fields:{KIND:'manual'}};

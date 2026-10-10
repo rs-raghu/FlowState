@@ -9,7 +9,7 @@ window.FlowEditor={
  resources(value){setResources(value);},
  load(state){Blockly.Events.disable();try{Blockly.serialization.workspaces.load(state||initialWorkspace(),workspace);}finally{Blockly.Events.enable();}dirty=false;},
  highlight(id){workspace.highlightBlock(id);},
- errors(issues){for(const b of workspace.getAllBlocks(false))b.setWarningText(null);for(const i of issues){const b=workspace.getBlockById(i.block);b?.setWarningText(i.message+' — '+i.correction);}document.getElementById('status').textContent=issues.length?issues.map(x=>x.message).join('\n'):'Workflow is valid';},
+ errors(issues){for(const b of workspace.getAllBlocks(false))b.setWarningText(null);for(const i of issues){const b=workspace.getBlockById(i.block);b?.setWarningText((i.severity||'ERROR')+' '+(i.code||'VALIDATION')+': '+i.message+' — '+i.correction);}document.getElementById('status').textContent=issues.length?issues.map(x=>(x.severity||'ERROR')+' '+(x.code||'VALIDATION')+': '+x.message+' — '+x.correction).join('\n'):'Workflow is valid';},
  saved(){dirty=false;document.getElementById('status').textContent='Saved';},
  dirty(){return dirty;}
 };

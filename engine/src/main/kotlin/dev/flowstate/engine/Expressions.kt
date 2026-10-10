@@ -138,18 +138,37 @@ object Expressions {
                 Value.integer((if (v.type == Type.LIST) v.items.size else v.text.length).toLong())
             }
             "list" ->
-                Value(Type.LIST, items = e.args.map { evaluate(it, c, depth + 1) }).also {
-                    require(it.items.size <= 1000)
-                }
+                Value(
+                        Type.LIST,
+                        items = e.args.map { evaluate(it, c, depth + 1) },
+                        elementType = e.name.takeIf { it.isNotBlank() }?.let(Type::valueOf),
+                    )
+                    .also {
+                        require(it.items.size <= 1000)
+                        require(
+                            it.elementType == null ||
+                                it.items.all { item ->
+                                    item.type == it.elementType || item.type == Type.NULL
+                                }
+                        ) {
+                            "List item type mismatch"
+                        }
+                    }
             "append" -> {
                 val a = arg(0)
                 require(a.type == Type.LIST)
-                Value(Type.LIST, items = a.items + arg(1)).also { require(it.items.size <= 1000) }
+                val item = arg(1)
+                require(
+                    a.elementType == null || item.type == a.elementType || item.type == Type.NULL
+                ) {
+                    "List item type mismatch"
+                }
+                a.copy(items = a.items + item).also { require(it.items.size <= 1000) }
             }
             "remove" -> {
                 val a = arg(0)
                 require(a.type == Type.LIST)
-                Value(Type.LIST, items = a.items.filter { it != arg(1) })
+                a.copy(items = a.items.filter { it != arg(1) })
             }
             "item" -> {
                 val a = arg(0)

@@ -15,6 +15,7 @@ import java.io.ByteArrayInputStream
 import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -160,7 +161,10 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                                 if (action == "copy") onClose()
                                             }
                                             "validate" ->
-                                                evaluateJavascript("FlowEditor.errors([])", null)
+                                                evaluateJavascript(
+                                                    "FlowEditor.errors(${codec.encodeToString(Compiler.warnings(d))})",
+                                                    null,
+                                                )
                                             "simulate" -> simulation = d
                                         }
                                     }
@@ -170,6 +174,8 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                     e.issues.forEach {
                                         add(
                                             buildJsonObject {
+                                                put("code", it.code)
+                                                put("severity", it.severity)
                                                 put("block", it.block)
                                                 put("message", it.message)
                                                 put("correction", it.correction)

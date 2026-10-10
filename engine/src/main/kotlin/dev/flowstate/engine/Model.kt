@@ -29,7 +29,12 @@ enum class Scope {
 }
 
 @Serializable
-data class Value(val type: Type, val text: String = "", val items: List<Value> = emptyList()) {
+data class Value(
+    val type: Type,
+    val text: String = "",
+    val items: List<Value> = emptyList(),
+    val elementType: Type? = null,
+) {
     fun boolean(): Boolean {
         require(type == Type.BOOLEAN)
         return text.toBooleanStrict()
@@ -84,7 +89,15 @@ data class Variable(
     val type: Type,
     val scope: Scope,
     val default: Value = Value.NULL,
+    val elementType: Type? = null,
 )
+
+fun Variable.accepts(value: Value): Boolean =
+    value.type == Type.NULL ||
+        value.type == type &&
+            (elementType == null ||
+                value.type == Type.LIST &&
+                    value.items.all { it.type == elementType || it.type == Type.NULL })
 
 @Serializable
 data class Trigger(
@@ -182,6 +195,8 @@ data class Frame(
     val definition: Definition? = null,
     val locals: Map<String, Value> = emptyMap(),
     val outputName: String = "",
+    val outputMappings: Map<String, String> = emptyMap(),
+    val statusName: String = "",
 )
 
 @Serializable
@@ -315,6 +330,7 @@ data class LocationState(
     val dwell: Long? = null,
 )
 
+@Serializable
 data class Issue(
     val code: String,
     val message: String,

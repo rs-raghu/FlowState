@@ -86,11 +86,28 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
             val declared =
                 e.definition.variables.find { it.name == name && it.scope == scope }
                     ?: error("Undeclared variable $name")
-            require(value.type == declared.type || value.type == Type.NULL) {
+            require(declared.accepts(value)) {
                 "Variable type mismatch"
             }
             if (scope == Scope.LOCAL) e = e.copy(locals = e.locals + (name to value))
             else values[Expressions.key(scope, name, e.definition.id)] = value
+        }
+        fun returned(frame: Frame, output: Value? = null) {
+            val outputs =
+                frame.outputMappings.mapValues { (source, _) -> e.locals[source] ?: Value.NULL }
+            e =
+                e.copy(
+                    definition = requireNotNull(frame.definition),
+                    locals = frame.locals,
+                    cursor = frame.returnTo,
+                )
+            if (output != null && frame.outputName.isNotBlank())
+                set(frame.outputName, Scope.LOCAL, output)
+            outputs.forEach { (source, value) ->
+                set(frame.outputMappings.getValue(source), Scope.LOCAL, value)
+            }
+            if (frame.statusName.isNotBlank())
+                set(frame.statusName, Scope.LOCAL, Value.string("COMPLETED"))
         }
         if (e.state in terminal || e.state == State.PAUSED) return Tick(e, effects, values)
         if (e.deadline?.let { now >= it } == true) {
@@ -183,13 +200,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                     cursor = frame.node,
                                     frames = e.frames + frame.copy(kind = "whileCounter"),
                                 )
-                        "call" ->
-                            e =
-                                e.copy(
-                                    definition = requireNotNull(frame.definition),
-                                    locals = frame.locals,
-                                    cursor = frame.returnTo,
-                                )
+                        "call" -> returned(frame)
                         else -> e = e.copy(cursor = frame.returnTo)
                     }
                     continue
@@ -449,13 +460,30 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                 d.variables.any {
                                     it.scope == Scope.LOCAL &&
                                         it.name == f("INPUTNAME") &&
-                                        it.type == value.type
+                                        it.accepts(value)
                                 }
                             ) {
                                 "Sub-workflow input type mismatch"
                             }
                             locals = locals + (f("INPUTNAME") to value)
                         }
+                        f("INPUTNAMES")
+                            .split(',')
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .forEachIndexed { index, name ->
+                                val value = evaluate(n, "PARAM$index")
+                                require(
+                                    d.variables.any {
+                                        it.scope == Scope.LOCAL &&
+                                            it.name == name &&
+                                            it.accepts(value)
+                                    }
+                                ) {
+                                    "Sub-workflow parameter $name has an incompatible type"
+                                }
+                                locals = locals + (name to value)
+                            }
                         e =
                             e.copy(
                                 frames =
@@ -466,6 +494,16 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                                             definition = e.definition,
                                             locals = e.locals,
                                             outputName = f("OUTPUTNAME"),
+                                            outputMappings =
+                                                f("OUTPUTS")
+                                                    .split(',')
+                                                    .filter { it.isNotBlank() }
+                                                    .associate {
+                                                        val parts = it.trim().split(':')
+                                                        require(parts.size == 2)
+                                                        parts[0].trim() to parts[1].trim()
+                                                    },
+                                            statusName = f("STATUSNAME"),
                                         ),
                                 definition = d,
                                 cursor = d.entry,
@@ -480,15 +518,8 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         if (index < 0) e = e.copy(state = State.COMPLETED)
                         else {
                             val frame = e.frames[index]
-                            e =
-                                e.copy(
-                                    definition = requireNotNull(frame.definition),
-                                    locals = frame.locals,
-                                    cursor = frame.returnTo,
-                                    frames = e.frames.take(index),
-                                )
-                            if (frame.outputName.isNotEmpty())
-                                set(frame.outputName, Scope.LOCAL, output)
+                            returned(frame, output)
+                            e = e.copy(frames = e.frames.take(index))
                         }
                     }
                     "try" -> {
@@ -553,7 +584,11 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                 e =
                     e.copy(
                         definition = call?.definition ?: e.definition,
-                        locals = call?.locals ?: e.locals,
+                        locals =
+                            call?.locals?.let {
+                                if (call.statusName.isBlank()) it
+                                else it + (call.statusName to Value.string("FAILED"))
+                            } ?: e.locals,
                         cursor = frame.body ?: frame.returnTo,
                         frames = e.frames.take(index) + Frame("branch", frame.returnTo),
                         state = State.RUNNING,
@@ -707,7 +742,11 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                     val call = e.frames.drop(frameIndex + 1).firstOrNull { it.kind == "call" }
                     e.copy(
                         definition = call?.definition ?: e.definition,
-                        locals = call?.locals ?: e.locals,
+                        locals =
+                            call?.locals?.let {
+                                if (call.statusName.isBlank()) it
+                                else it + (call.statusName to Value.string("FAILED"))
+                            } ?: e.locals,
                         branches = emptyList(),
                         cursor = frame.body ?: frame.returnTo,
                         frames = e.frames.take(frameIndex) + Frame("branch", frame.returnTo),

@@ -78,6 +78,8 @@ class Backups(private val db: FlowDatabase) {
             }
         val definitions = compiled.associate { it.first.id to it.second }
         val existing = dao.automations().map { codec.decodeFromString<Definition>(it.definition) }
+        val callIssues = Compiler.validateCalls(existing + definitions.values)
+        if (callIssues.isNotEmpty()) throw ValidationException(callIssues)
         val active =
             dao.active().flatMap { row ->
                 val execution = codec.decodeFromString<Execution>(row.snapshot)
