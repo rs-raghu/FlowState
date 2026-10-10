@@ -56,7 +56,15 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
+          cmdline-tools-version: '16111833' # 23.0; supports minor-versioned AVD targets
           packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+      - name: Keep emulator runner on current AVD tools
+        run: |
+          test -d "$ANDROID_HOME/cmdline-tools/23.0"
+          if [ -e "$ANDROID_HOME/cmdline-tools/latest" ]; then
+            mv "$ANDROID_HOME/cmdline-tools/latest" "$ANDROID_HOME/cmdline-tools/runner-bundled"
+          fi
+          ln -s "$ANDROID_HOME/cmdline-tools/23.0" "$ANDROID_HOME/cmdline-tools/latest"
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -72,7 +80,9 @@ jobs:
           ram-size: 2048M
           disk-size: 8192M
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader -feature -GLDirectMem -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader -feature GLDirectMem -no-snapshot -noaudio -no-boot-anim -no-metrics
+          pre-emulator-launch-script: |
+            grep -Fx 'target=android-${{ matrix.api }}' "$HOME/.android/avd/test.ini"
           script: |
             bash ./scripts/test-device.sh
       - name: Save device reports
