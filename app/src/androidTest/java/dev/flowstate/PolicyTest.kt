@@ -40,6 +40,7 @@ class PolicyTest {
         }
         migration.runMigrationsAndValidate(name, 3, true, FlowDatabase.MIGRATION_2_3).close()
         migration.runMigrationsAndValidate(name, 4, true, FlowDatabase.MIGRATION_3_4).close()
+        migration.runMigrationsAndValidate(name, 5, true, FlowDatabase.MIGRATION_4_5).close()
         instrumentation.targetContext.deleteDatabase(name)
     }
 

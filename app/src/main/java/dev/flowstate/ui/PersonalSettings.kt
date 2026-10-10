@@ -3,6 +3,7 @@ package dev.flowstate.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -21,6 +22,8 @@ fun PersonalSettings(vm: FlowViewModel, prefs: Preferences) {
     var draft by remember(saved) { mutableStateOf(saved) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirm by remember { mutableStateOf<String?>(null) }
+    var help by remember { mutableStateOf(false) }
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val context = LocalContext.current
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -150,6 +153,45 @@ fun PersonalSettings(vm: FlowViewModel, prefs: Preferences) {
     ) {
         Text("Test workflow")
     }
+    TextButton(onClick = { help = true }) { Text("Help and documentation") }
+    if (help)
+        AlertDialog(
+            onDismissRequest = { help = false },
+            title = { Text("Using FlowState") },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 420.dp)
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "Create an automation from Automations, select a preset and edit its blocks. Connect actions below one trigger, validate, then save. Run manually or enable automatic triggers when ready."
+                    )
+                    Text(
+                        "The simulator runs an isolated copy. Set its clock, responses, saved coordinates and fake location events; inspect traces or step through blocks before enabling a workflow."
+                    )
+                    Text(
+                        "Questions and checklists remain in Activity until answered, cancelled or expired. Snooze postpones a reminder; dismissing its notification keeps the question available in Activity."
+                    )
+                    Text(
+                        "Save real location coordinates and a radius of at least 100 m. Grant precise/background location when enabling location triggers. Android and Google Play Services may delay geofences. Settings shows permission and registration health."
+                    )
+                    Text(
+                        "After force-stop, reopen FlowState to reconcile pending work. Export a JSON backup before clearing app data. Imported workflows start disabled; active history is archived, never automatically resumed."
+                    )
+                    TextButton(
+                        onClick = {
+                            uriHandler.openUri(
+                                "https://github.com/rs-raghu/FlowState/blob/main/docs/USER_GUIDE.md"
+                            )
+                        }
+                    ) {
+                        Text("Open full guide")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { help = false }) { Text("Close") } },
+        )
     Text("FlowState ${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}")
     Text(
         "Privacy: workflows, locations and activity stay on this device. No account, backend, Internet permission or telemetry. JSON backups contain your personal data; store them somewhere you trust."

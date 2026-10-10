@@ -12,7 +12,7 @@ else
   adb shell cmd appops set --uid dev.flowstate POST_NOTIFICATION ignore
   adb shell cmd appops set dev.flowstate POST_NOTIFICATION ignore
 fi
-adb shell am instrument -w -r -e class dev.flowstate.PermissionRecoveryTest dev.flowstate.test/androidx.test.runner.AndroidJUnitRunner | tee app/build/reports/device/permission-recovery.txt
+adb shell am instrument -w -r -e class dev.flowstate.PermissionRecoveryTest -e permissionPhase verify dev.flowstate.test/androidx.test.runner.AndroidJUnitRunner | tee app/build/reports/device/permission-recovery.txt
 grep -qE '^OK \(1 test\)' app/build/reports/device/permission-recovery.txt
 # Install the optimized application and prove that Hilt/Room/serialization survive R8.
 bash ./gradlew :app:assembleRelease -Pflowstate.releaseSmoke=true --max-workers=2 --console=plain

@@ -20,6 +20,7 @@ object AppModule {
                 FlowDatabase.MIGRATION_1_2,
                 FlowDatabase.MIGRATION_2_3,
                 FlowDatabase.MIGRATION_3_4,
+                FlowDatabase.MIGRATION_4_5,
             )
             .build()
 

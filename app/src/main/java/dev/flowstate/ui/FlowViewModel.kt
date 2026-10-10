@@ -112,6 +112,7 @@ class FlowViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         enabled: Boolean = true,
         dwellSeconds: Int = 120,
         cooldownSeconds: Int = 30,
+        icon: String = "",
     ) = work {
         require(name.isNotBlank() && name.length <= 120)
         require(
@@ -136,6 +137,7 @@ class FlowViewModel @Inject constructor(app: Application) : AndroidViewModel(app
                 now,
                 dwellSeconds = dwellSeconds,
                 cooldownSeconds = cooldownSeconds,
+                icon = icon,
             )
         )
     }

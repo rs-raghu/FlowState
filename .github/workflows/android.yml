@@ -72,7 +72,7 @@ jobs:
           ram-size: 2048M
           disk-size: 8192M
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim
           script: |
             bash ./scripts/test-device.sh
       - name: Save device reports

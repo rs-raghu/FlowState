@@ -483,7 +483,10 @@ private fun Locations(vm: FlowViewModel, locations: List<LocationEntity>) {
         }
         locations.forEach { l ->
             Panel {
-                Text(l.name, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    listOf(l.icon, l.name).filter { it.isNotBlank() }.joinToString(" "),
+                    style = MaterialTheme.typography.titleLarge,
+                )
                 Text("${l.latitude}, ${l.longitude} · ${l.radius.toInt()} m")
                 SelectionContainer {
                     Text("ID: ${l.id}", style = MaterialTheme.typography.bodySmall)
@@ -544,6 +547,7 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
     var dwell by remember { mutableStateOf((l?.dwellSeconds ?: 120).toString()) }
     var cooldown by remember { mutableStateOf((l?.cooldownSeconds ?: 30).toString()) }
     var description by remember { mutableStateOf(l?.description ?: "") }
+    var icon by remember { mutableStateOf(l?.icon ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -557,6 +561,11 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedTextField(name, { name = it }, label = { Text("Name") })
+                OutlinedTextField(
+                    icon,
+                    { if (it.length <= 32) icon = it },
+                    label = { Text("Icon (optional emoji or symbol)") },
+                )
                 OutlinedTextField(lat, { lat = it }, label = { Text("Latitude") })
                 OutlinedTextField(lon, { lon = it }, label = { Text("Longitude") })
                 OutlinedTextField(
@@ -655,6 +664,7 @@ private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () 
                             enabled,
                             dwell.toInt(),
                             cooldown.toInt(),
+                            icon,
                         )
                         onDismiss()
                     } catch (e: Exception) {

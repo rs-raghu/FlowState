@@ -18,6 +18,7 @@ data class BackupLocation(
     val description: String = "",
     val dwellSeconds: Int = 120,
     val cooldownSeconds: Int = 30,
+    val icon: String = "",
 )
 
 @Serializable
@@ -70,6 +71,7 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                                 it.description,
                                 it.dwellSeconds,
                                 it.cooldownSeconds,
+                                it.icon,
                             )
                         },
                 )
@@ -167,6 +169,7 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                     it.name.isNotBlank() &&
                     it.name.length <= 120 &&
                     it.description.length <= 4096 &&
+                    it.icon.length <= 32 &&
                     it.dwellSeconds in 30..86400 &&
                     it.cooldownSeconds in 0..86400
             )
@@ -319,6 +322,7 @@ class Backups(private val db: FlowDatabase, private val preferences: Preferences
                         updated = now,
                         dwellSeconds = it.dwellSeconds,
                         cooldownSeconds = it.cooldownSeconds,
+                        icon = it.icon,
                     )
                 )
             }

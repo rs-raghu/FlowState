@@ -205,7 +205,8 @@ class Coordinator(private val db: FlowDatabase, private val context: Context) {
                 value.radius in 100f..100000f &&
                 value.dwellSeconds in 30..86400 &&
                 value.cooldownSeconds in 0..86400 &&
-                value.description.length <= 4096
+                value.description.length <= 4096 &&
+                value.icon.length <= 32
         )
         dao.saveLocation(value)
         reconcileInternal()

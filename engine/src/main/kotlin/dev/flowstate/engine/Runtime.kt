@@ -25,7 +25,7 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
             capturedBytes +=
                 codec.encodeToString(captured(definition)).toByteArray(Charsets.UTF_8).size
             require(capturedBytes <= 256_000) { "Captured workflow library exceeds 256 KB" }
-            require(path.size < 8 && definition.id !in path) {
+            require(path.size <= d.maxCallDepth && definition.id !in path) {
                 "Recursive or excessive workflow dependency"
             }
             definition.nodes
@@ -470,7 +470,14 @@ class Runtime(private val resolve: (String) -> Definition? = { null }) {
                         e = e.copy(cursor = n.next)
                     }
                     "call" -> {
-                        require(e.frames.count { it.kind == "call" } < 8) { "Call depth exceeded" }
+                        require(
+                            e.frames.count { it.kind == "call" } <
+                                (e.frames.firstOrNull { it.kind == "call" }?.definition
+                                        ?: e.definition)
+                                    .maxCallDepth
+                        ) {
+                            "Call depth exceeded"
+                        }
                         val d = e.library[f("WORKFLOW")] ?: error("Workflow snapshot missing")
                         require(
                             d.id != e.definition.id && e.frames.none { it.definition?.id == d.id }

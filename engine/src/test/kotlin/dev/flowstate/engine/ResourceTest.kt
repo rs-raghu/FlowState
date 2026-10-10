@@ -7,6 +7,27 @@ import org.junit.Test
 
 class ResourceTest {
     @Test
+    fun configuredCallDepthRejectsExcessiveTransitiveCapture() {
+        val child =
+            Definition(
+                id = "child",
+                entry = "call",
+                nodes = listOf(Node("call", "call", fields = mapOf("WORKFLOW" to "leaf"))),
+            )
+        val leaf = Definition(id = "leaf", entry = "stop", nodes = listOf(Node("stop", "stop")))
+        val root =
+            Definition(
+                id = "root",
+                entry = "call",
+                maxCallDepth = 1,
+                nodes = listOf(Node("call", "call", fields = mapOf("WORKFLOW" to "child"))),
+            )
+        val rt = Runtime { mapOf("child" to child, "leaf" to leaf)[it] }
+        assertFailsWith<IllegalArgumentException> { rt.start("run", root, 0) }
+        assertEquals(2, rt.start("run", root.copy(maxCallDepth = 2), 0).library.size)
+    }
+
+    @Test
     fun editorBudgetsCompileAndRejectUnsafeValues() {
         val source =
             """{"blocks":{"blocks":[{"type":"fs_trigger","id":"trigger","fields":{"BURST":2,"MAXSTEPS":10,"MAXITERATIONS":5,"RATE":3},"next":{"block":{"type":"fs_stop","id":"stop"}}}]}}"""

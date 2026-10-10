@@ -444,6 +444,7 @@ object Compiler {
                     maxIterations = (f["MAXITERATIONS"] ?: "1000").toInt(),
                     maxBurst = (f["BURST"] ?: "100").toInt(),
                     notificationRate = (f["RATE"] ?: "30").toInt(),
+                    maxCallDepth = (f["CALLDEPTH"] ?: "8").toInt(),
                     checklists =
                         templates.filterKeys { template ->
                             nodes.any { it.fields["TEMPLATE"] == template }
@@ -485,7 +486,31 @@ object Compiler {
 
         fun issue(message: String, id: String = "") {
 
-            errors += Issue("VALIDATION", message, id)
+            val (code, correction) =
+                when {
+                    message.contains("budget", true) || message.contains("limit", true) ->
+                        "BUDGET" to
+                            "Choose a value within the displayed limits; simplify the workflow if it exhausts its budget"
+                    message.contains("type", true) ||
+                        message.contains("Boolean", true) ||
+                        message.contains("variable", true) ||
+                        message.contains("element", true) ->
+                        "TYPE" to
+                            "Declare the referenced variable and connect an expression matching its type, scope and list element type"
+                    message.contains("location", true) ||
+                        message.contains("workflow", true) ||
+                        message.contains("template", true) ->
+                        "REFERENCE" to
+                            "Select an existing saved resource and remove missing references"
+                    message.contains("time", true) ||
+                        message.contains("zone", true) ||
+                        message.contains("date", true) ||
+                        message.contains("day", true) ->
+                        "SCHEDULE" to
+                            "Use valid clock/date fields and a device or IANA timezone; check recurrence eligibility"
+                    else -> "VALIDATION" to "Correct the highlighted configuration: $message"
+                }
+            errors += Issue(code, message, id, correction)
         }
 
         if (
@@ -494,7 +519,8 @@ object Compiler {
                 d.maxSteps !in 1..10000 ||
                 d.maxIterations !in 1..1000 ||
                 d.maxBurst !in 1..100 ||
-                d.notificationRate !in 1..120
+                d.notificationRate !in 1..120 ||
+                d.maxCallDepth !in 1..8
         )
             issue("Unsupported schema or unsafe budget")
 

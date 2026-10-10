@@ -34,6 +34,9 @@ class PermissionRecoveryTest {
 
     @Test
     fun deniedNotificationRemainsDurableAndRestoresWithoutRepostingDismissal() = runBlocking {
+        org.junit.Assume.assumeTrue(
+            InstrumentationRegistry.getArguments().getString("permissionPhase") == "verify"
+        )
         val id = UUID.randomUUID().toString()
         val platform = Platform(app)
         try {

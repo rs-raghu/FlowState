@@ -147,6 +147,7 @@ data class Definition(
     val maxIterations: Int = 1000,
     val maxBurst: Int = 100,
     val notificationRate: Int = 30,
+    val maxCallDepth: Int = 8,
     val checklists: Map<String, ChecklistTemplate> = emptyMap(),
 )
 

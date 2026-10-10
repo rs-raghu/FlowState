@@ -267,7 +267,7 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                                         "https://appassets.androidplatform.net/assets/editor/index.html"
                                 )
                                     evaluateJavascript(
-                                        "window.FlowEditor && FlowEditor.takeMessage ? JSON.stringify(FlowEditor.takeMessage()) : null"
+                                        "window.FlowEditor && FlowEditor.takeMessage ? FlowEditor.takeMessage() : null"
                                     ) { raw ->
                                         if (raw != null && raw != "null" && raw.length <= 4_000_000)
                                             try {

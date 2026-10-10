@@ -36,6 +36,7 @@ data class LocationEntity(
     val registration: String = "Not registered",
     @ColumnInfo(defaultValue = "120") val dwellSeconds: Int = 120,
     @ColumnInfo(defaultValue = "30") val cooldownSeconds: Int = 30,
+    @ColumnInfo(defaultValue = "''") val icon: String = "",
 )
 
 @Entity(
@@ -259,13 +260,19 @@ interface FlowDao {
             LocationEventEntity::class,
             ChecklistEntity::class,
         ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class FlowDatabase : RoomDatabase() {
     abstract fun dao(): FlowDao
 
     companion object {
+        val MIGRATION_4_5 =
+            object : Migration(4, 5) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE locations ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
+                }
+            }
         val MIGRATION_3_4 =
             object : Migration(3, 4) {
                 override fun migrate(db: SupportSQLiteDatabase) {
