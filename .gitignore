@@ -8,4 +8,5 @@ node_modules/
 .idea/
 *.hprof
 captures/
+blockly-editor/browser-reports/
 .kotlin/

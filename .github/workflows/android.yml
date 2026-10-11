@@ -28,6 +28,9 @@ jobs:
       - name: Build and test offline editor
         working-directory: blockly-editor
         run: npm ci && npm test && npm run build
+      - name: Verify phone editor interactions
+        working-directory: blockly-editor
+        run: npx playwright install --with-deps chromium && npm run test:browser
       - name: Set up Android SDK and command-line tools
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:

@@ -11,8 +11,10 @@ const reminder=()=>[dropdown('CHANNEL',['normal','low','high']),dropdown('CATEGO
 const interaction=()=>[text('SNOOZE','5,15'),number('MAXSNOOZE',3,0,10),number('FOLLOWUP',0,0,604800)];
 const scope=()=>dropdown('SCOPE',['LOCAL','AUTOMATION','GLOBAL']);
 function block(type,label,args,colour=175,output){
-  const def={type:'fs_'+type,message0:label.split(' / ')[0],args0:[],colour,tooltip:label+' — configure fields and connect typed inputs. Version 1.',helpUrl:''};
-  args.forEach((arg,i)=>{def['message'+(i+1)]=arg.name.replaceAll('_',' ')+' %1';def['args'+(i+1)]=[arg];});
+  const headings={trigger:'Start workflow',message:'Show message',ask:'Ask a question',checklist:'Checklist',notifyUpdate:'Update notification',notifyCancel:'Cancel notification'};
+  const def={type:'fs_'+type,message0:headings[type]||label.split(' / ')[0],args0:[],colour,tooltip:label+' — configure fields and connect typed inputs. Version 1.',helpUrl:''};
+  const labels={KIND:'Type',TITLE:'Title',BODY:'Message',CHANNEL:'Priority',TIMES:'Time',ZONE:'Timezone',RECURRENCE:'Repeat',LOCATION:'Saved location',TRANSITION:'When you',OPTIONS:'Choices / items',TEMPLATE:'Checklist template',TIMEOUT:'Expires after (seconds)',SECONDS:'Seconds',NAME:'Variable name',SCOPE:'Store in',VALUE:'Value',TEST:'Condition',YES:'Then / first answer',NO:'Else / second answer',OTHER:'Other answers',CANCEL:'If cancelled',DONE:'When complete',DO:'Actions',ERROR:'On error',LIMIT:'Maximum repetitions',WORKFLOW:'Workflow',INPUTNAME:'Input name',INPUTNAMES:'Named inputs',OUTPUTNAME:'Result name',OUTPUTS:'Named results',STATUSNAME:'Status variable',TYPE:'Value type',ELEMENTTYPE:'List item type',DEFAULT:'Starting value',A:'First value / path',B:'Second value / path',C:'Third value',OP:'Operation',COUNT:'Number of items',MESSAGE:'Note',TARGET:'Notification name'};
+  args.forEach((arg,i)=>{def['message'+(i+1)]=(labels[arg.name]||arg.name.replaceAll('_',' ').toLowerCase())+' %1';def['args'+(i+1)]=[arg];});
   if(output) def.output=output; else {def.previousStatement=null;def.nextStatement=null;}
   return def;
 }
