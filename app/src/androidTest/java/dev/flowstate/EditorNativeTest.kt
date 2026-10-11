@@ -50,6 +50,7 @@ class EditorNativeTest {
 
     private fun ready() {
         for (i in 0 until 100) {
+            compose.waitForIdle()
             if (
                 js("typeof window.FlowEditor") == "\"object\"" &&
                     js("JSON.stringify(FlowEditor.snapshot())").contains("fs_trigger")
@@ -90,6 +91,7 @@ class EditorNativeTest {
         ready()
         assertEquals("0", js("document.querySelectorAll('#search').length"))
         assertEquals("32", js("document.querySelectorAll('.block-choice').length"))
+        saveUiScreenshot(app, "editor-block-library")
         // Exercise the same HTML button as a tap, with the real WebView/native save bridge.
         js("document.querySelector('[data-block=fs_message]').click()")
         assertTrue(js("JSON.stringify(FlowEditor.snapshot())").contains("fs_message"))
