@@ -2,7 +2,7 @@
 
 Offline-first visual personal automation for Android 10+. The app uses native Kotlin/Compose screens, a locally bundled Blockly editor, and a validated native workflow interpreter. No login, remote backend, analytics or Internet permission.
 
-**Software implementation and automated verification complete:** 74 JVM and six editor tests pass. Debug/optimized assembly, native compilation and lint pass. [Final CI](https://github.com/rs-raghu/FlowState/actions/runs/38042626097) passes on Android 10, 16 and 17: 24 standard native cases per version, external process/permission recovery and optimized APK launch. Final physical geofence/reboot/OEM and battery checks remain in [phone acceptance](docs/PHONE_ACCEPTANCE.md). Read [status](docs/IMPLEMENTATION_STATUS.md), [limitations](docs/KNOWN_LIMITATIONS.md) and [tests](docs/TESTING.md).
+**Version 0.2.0 usability update:** browse all blocks without searching, keep everyday block fields visible, navigate Settings through folders, and edit locations using a full-screen map with working pan/zoom and contained drawing. 74 JVM tests, six serialization tests, and real browser checks at three widths pass. Debug/optimized assembly, native compilation and lint pass. [Device verification](https://github.com/rs-raghu/FlowState/actions/runs/38112343024) passes 26 native cases per version on Android 10, 16 and 17, external process/permission recovery and optimized APK launch. Reports and actual UI screenshots were inspected. Final physical geofence/reboot/OEM and battery checks remain in [phone acceptance](docs/PHONE_ACCEPTANCE.md). Read [status](docs/IMPLEMENTATION_STATUS.md), [limitations](docs/KNOWN_LIMITATIONS.md) and [tests](docs/TESTING.md).
 
 ## What works in code
 

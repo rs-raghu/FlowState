@@ -1,23 +1,25 @@
 # Verification and acceptance
 
-Updated 2026-10-10. A compiled test is not an executed device test. Local verification uses JDK 23, Gradle 9.6.0, AGP 9.4.1, Kotlin 2.4.21, SDK 37.0/target 37 and Node 24.
+Updated 2026-10-11. A compiled test is not an executed device test. Local verification uses JDK 23, Gradle 9.6.0, AGP 9.4.1, Kotlin 2.4.21, SDK 37.0/target 37 and Node 24.
 
 ```powershell
 cd blockly-editor
 npm ci
 npm test
 npm run build
+npx playwright install chromium
+npm run test:browser
 cd ..
 .\gradlew.bat :engine:test :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleRelease --max-workers=2
 ```
 
-74 JVM tests pass: Engine 23, Control 12, Parallel 12, Sample 2, Window 4, Reminder 3, Binding 4, Simulation 3, Resource 11. Six Node tests pass for all custom blocks/examples, fourth-choice branches, typed lists and multiple CALL parameters. Debug assembly, lint (zero errors, 33 warnings), native compilation and optimized release assembly pass. Warnings include synchronous durable preference writes, optional KTX/resource suggestions, intentional restricted editor JavaScript and a renderer-handler detection warning despite the explicit override. Errors are not blanket-suppressed.
+74 JVM tests pass: Engine 23, Control 12, Parallel 12, Sample 2, Window 4, Reminder 3, Binding 4, Simulation 3, Resource 11. Six Node tests pass for all custom blocks/examples, fourth-choice branches, typed lists and multiple CALL parameters. Playwright checks the real bundled editor at 360/412/800 px: every block is browsable, inserting actions connects them, compact/advanced fields preserve workspace data, saving reaches the bridge, and the toolbar stays inside the viewport without uncaught errors. Debug assembly, lint (zero errors, 32 warnings, one hint), native compilation and optimized release assembly pass. Warnings include synchronous durable preference writes, optional KTX/resource suggestions, intentional restricted editor JavaScript and a renderer-handler detection warning despite the explicit override. Errors are not blanket-suppressed.
 
-The standard native suite has 24 cases: database 7, Activity 4, policy/migrations 2, reminder/template ownership 2, backup 5, editor 1, defaults/geofence filtering 2 and real alarm/worker continuation 1. PermissionRecoveryTest is reserved for its external phase and skipped if a runner unexpectedly discovers it in the ordinary suite. ProcessRecoveryTest runs separately around force-stop/reopen. CI provisions Google APIs x86_64 KVM emulators for API 29, 36 and 37.0, with 8 GB data storage and direct SwiftShader rendering. It retains XML/HTML/logcat and external-phase reports on failure.
+The standard native suite has 26 cases: database 7, Activity/UI 5, policy/migrations 2, reminder/template ownership 2, backup 5, editor 2, defaults/geofence filtering 2 and real alarm/worker continuation 1. New UI cases create an automation from Dashboard, add a block through the actual WebView library, save through the native bridge and run it; another chooses/pans/zooms a map pin, validates missing coordinates, restores the form after rotation and saves the location. Large-text checks navigate Settings folders and restore the selected page. Screenshots are retained in device reports for visual inspection. PermissionRecoveryTest is reserved for its external phase and skipped if a runner unexpectedly discovers it in the ordinary suite. ProcessRecoveryTest runs separately around force-stop/reopen. CI provisions Google APIs x86_64 KVM emulators for API 29, 36 and 37.0, with 8 GB data storage and direct SwiftShader rendering. It retains XML/HTML/logcat and external-phase reports on failure.
 
-Final run [38042626097](https://github.com/rs-raghu/FlowState/actions/runs/38042626097), source c20794d, completes successfully: build and all API 29/36/37.0 jobs. Downloaded reports verify 24 standard native cases per version with no failures, process prepare/verify each reporting `OK (1 test)`, external notification recovery reporting `OK (1 test)`, and optimized APK launch reporting `Status: ok` with the Activity remaining running. The editor fixture terminates its actual renderer, reloads after Compose applies the tap and verifies the preserved draft before saving.
+The prior run [38042626097](https://github.com/rs-raghu/FlowState/actions/runs/38042626097), source c20794d, passed the original 24-case matrix and external recovery phases, but did not catch the owner's reported map/settings/search usability defects. Version 0.2 adds the UI regressions above. Its current run [38112343024](https://github.com/rs-raghu/FlowState/actions/runs/38112343024), source a6e0cf4, passes build and all API 29/36/37.0 jobs. Downloaded XML confirms 26 standard cases per version with no assertion failures. Process prepare/verify and permission recovery each report `OK (1 test)`; R8 launch reports `Status: ok` and remains running. Actual screenshots show the block library/workflow, contained map/radius/zoom controls and readable nested Settings with large-text navigation labels. The editor test also asserts a visible workspace/library height after waiting for browser frames, preventing a successful data save from hiding a collapsed editor layout.
 
-AGP's XML exporter records the deliberately ignored PermissionRecoveryTest assumption as a `<failure>` in the ordinary 25-entry report. The runner treats that fixture as skipped and the Gradle job succeeds; the other 24 cases have zero failures/errors. Its actual permission-denied scenario executes separately and must report `OK (1 test)`. Do not mistake that exported assumption for a failed application assertion or count it as additional executed coverage.
+AGP's XML exporter records the deliberately ignored PermissionRecoveryTest assumption as a `<failure>` in the ordinary report (27 entries including that fixture). The runner treats it as skipped. Its actual permission-denied scenario executes separately and must report `OK (1 test)`. Do not mistake that exported assumption for a failed application assertion or count it as additional executed coverage.
 
 ## Acceptance mapping
 

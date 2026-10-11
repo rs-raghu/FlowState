@@ -1,6 +1,6 @@
 # Known limitations and final checks
 
-Updated 2026-10-10. The prior functional gap inventory has been implemented. Final hosted run 38042626097 passes build and the complete API 29/36/37.0 matrix; inspected evidence and acceptance boundaries are in TESTING.md. Physical acceptance remains below.
+Updated 2026-10-11 for version 0.2.0. The reported block-search, Settings navigation and map-overlap issues have been fixed, with dedicated UI regressions. The current device run and inspected evidence are recorded in TESTING.md. Physical acceptance remains below.
 
 ## Physical acceptance
 
