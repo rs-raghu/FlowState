@@ -54,6 +54,11 @@ fun Editor(vm: FlowViewModel, a: AutomationEntity, onClose: () -> Unit) {
                             )
                             .build()
                     WebView(context).apply {
+                        layoutParams =
+                            android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
                         view = this
                         settings.javaScriptEnabled = true
                         settings.allowFileAccess = false

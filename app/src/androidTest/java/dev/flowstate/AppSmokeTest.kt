@@ -126,6 +126,13 @@ class AppSmokeTest {
         compose.onNodeWithTag("save-location").performClick()
         compose.onNodeWithTag("location-error").assertExists()
         compose.onNodeWithTag("location-map").performScrollTo().performTouchInput { click(center) }
+        compose.waitUntil(15_000) {
+            compose
+                .onNodeWithTag("location-map")
+                .fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.StateDescription] ==
+                "Map ready"
+        }
         compose.onNodeWithTag("location-error").assertDoesNotExist()
         fun pin() =
             compose
@@ -159,6 +166,13 @@ class AppSmokeTest {
         saveUiScreenshot(app, "location-map-radius")
         scenario!!.recreate()
         compose.onNodeWithTag("location-name").assertTextContains(name)
+        compose.waitUntil(15_000) {
+            compose
+                .onNodeWithTag("location-map")
+                .fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.StateDescription] ==
+                "Map ready"
+        }
         assertEquals(selected, pin())
         assertEquals(fitted, scale())
         compose.onNodeWithTag("location-map").performScrollTo()

@@ -54,8 +54,10 @@ class EditorNativeTest {
             if (
                 js("typeof window.FlowEditor") == "\"object\"" &&
                     js("JSON.stringify(FlowEditor.snapshot())").contains("fs_trigger")
-            )
+            ) {
+                painted()
                 return
+            }
             Thread.sleep(100)
         }
         fail(
@@ -64,6 +66,34 @@ class EditorNativeTest {
                     "JSON.stringify({errors:window.FlowEditorErrors,url:location.href,editor:typeof window.FlowEditor,bridge:typeof window.FlowBridge,status:document.getElementById('status').textContent})"
                 )
         )
+    }
+
+    private fun painted() {
+        js(
+            "window.FlowEditorFrameReady=false;requestAnimationFrame(function(){requestAnimationFrame(function(){window.FlowEditorFrameReady=true})})"
+        )
+        for (i in 0 until 100) {
+            if (js("window.FlowEditorFrameReady") == "true") break
+            Thread.sleep(50)
+        }
+        val metrics =
+            js(
+                "JSON.stringify({viewport:[innerWidth,innerHeight],body:document.body.getBoundingClientRect().toJSON(),stage:document.getElementById('stage').getBoundingClientRect().toJSON(),workspace:document.getElementById('workspace').getBoundingClientRect().toJSON()})"
+            )
+        assertEquals(
+            "Workspace must occupy the available screen: $metrics",
+            "true",
+            js("document.getElementById('workspace').getBoundingClientRect().height > 300"),
+        )
+        if (js("document.getElementById('picker').hidden") == "false") {
+            assertEquals(
+                "Block library must be visible: $metrics",
+                "true",
+                js(
+                    "document.querySelector('.block-choice').getBoundingClientRect().height >= 44 && document.getElementById('picker').getBoundingClientRect().height > 300"
+                ),
+            )
+        }
     }
 
     @After
@@ -103,6 +133,7 @@ class EditorNativeTest {
             js("document.getElementById('status').textContent")
                 .contains("uncaught", ignoreCase = true)
         )
+        painted()
         saveUiScreenshot(app, "editor-created-workflow")
         js("document.getElementById('close').click()")
         compose.waitUntil(15000) {

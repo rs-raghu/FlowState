@@ -19,6 +19,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
    await page.waitForFunction(()=>typeof window.FlowEditor==='object');
    await page.evaluate(()=>FlowEditor.load(null));
    assert.equal(await page.locator('#search').count(),0,'No required search field');
+   assert.ok(await page.locator('#workspace').evaluate(node=>node.getBoundingClientRect().height>500),'Workspace fills available height');
    const {definitions}=await import('./catalogue.js');
    assert.deepEqual(new Set(await page.locator('.block-choice').evaluateAll(nodes=>nodes.map(node=>node.dataset.block))),new Set(definitions.map(block=>block.type)),'Every block is browsable');
    await page.screenshot({path:path.join(__dirname,`browser-reports/blocks-${width}.png`)});

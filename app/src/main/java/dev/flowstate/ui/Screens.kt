@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -83,6 +84,7 @@ private fun Panel(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 fun FlowState(vm: FlowViewModel, initialExecution: String?) {
     val context = LocalContext.current
+    val largeText = LocalConfiguration.current.fontScale > 1.3f
     val prefs = remember { Preferences(context) }
     val theme by prefs.theme.collectAsStateWithLifecycle("system")
     val defaults by prefs.options.collectAsStateWithLifecycle(Preferences.defaults)
@@ -128,6 +130,11 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
                                 )
                                 .forEach { (name, icon) ->
                                     NavigationBarItem(
+                                        modifier =
+                                            Modifier.semantics {
+                                                contentDescription =
+                                                    name.replaceFirstChar(Char::uppercase)
+                                            },
                                         selected =
                                             route == name ||
                                                 name == "settings" &&
@@ -142,7 +149,15 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
                                         icon = { Text(icon) },
                                         label = {
                                             Text(
-                                                name.replaceFirstChar(Char::uppercase),
+                                                if (largeText)
+                                                    when (name) {
+                                                        "dashboard" -> "Home"
+                                                        "automations" -> "Flows"
+                                                        "locations" -> "Places"
+                                                        else ->
+                                                            name.replaceFirstChar(Char::uppercase)
+                                                    }
+                                                else name.replaceFirstChar(Char::uppercase),
                                                 style = MaterialTheme.typography.labelSmall,
                                             )
                                         },
@@ -152,7 +167,11 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
                 },
             ) { padding ->
                 Surface(Modifier.padding(padding).fillMaxSize()) {
-                    NavHost(nav, startDestination = "dashboard") {
+                    NavHost(
+                        nav,
+                        startDestination = "dashboard",
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
                         composable("dashboard") {
                             Content {
                                 Title("FlowState", "Build routines that follow your decisions.")

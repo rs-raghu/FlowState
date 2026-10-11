@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import kotlin.math.*
 import kotlinx.coroutines.Dispatchers
@@ -68,7 +69,8 @@ fun LocationMap(
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            "Tap to place a pin · drag or pinch to move and zoom",
+            if (rings.isEmpty()) "Loading offline map…"
+            else "Tap to place a pin · drag or pinch to move and zoom",
             style = MaterialTheme.typography.labelLarge,
         )
         Canvas(
@@ -77,6 +79,7 @@ fun LocationMap(
                 .clipToBounds()
                 .testTag("location-map")
                 .semantics {
+                    stateDescription = if (rings.isEmpty()) "Loading map" else "Map ready"
                     contentDescription =
                         "Location map. Tap to choose coordinates. Zoom controls below."
                 }
