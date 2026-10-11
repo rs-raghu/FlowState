@@ -132,7 +132,10 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
                                 )
                                 .forEach { (name, icon) ->
                                     NavigationBarItem(
-                                        selected = route == name,
+                                        selected =
+                                            route == name ||
+                                                name == "settings" &&
+                                                    route?.startsWith("settings/") == true,
                                         onClick = {
                                             nav.navigate(name) {
                                                 popUpTo("dashboard") { saveState = true }
@@ -246,7 +249,26 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
                         composable("activity") {
                             Activity(vm, executions, automations, expanded, { expanded = it })
                         }
-                        composable("settings") { SettingsScreen(vm, prefs, theme, diagnostics) }
+                        composable("settings") {
+                            SettingsScreen(
+                                vm,
+                                prefs,
+                                theme,
+                                diagnostics,
+                                onOpen = { nav.navigate("settings/$it") },
+                            )
+                        }
+                        composable("settings/{section}") { back ->
+                            SettingsScreen(
+                                vm,
+                                prefs,
+                                theme,
+                                diagnostics,
+                                back.arguments?.getString("section").orEmpty(),
+                                { nav.navigate("settings/$it") },
+                                { nav.popBackStack() },
+                            )
+                        }
                         composable("editor/{id}") { back ->
                             val a = automations.find { it.id == back.arguments?.getString("id") }
                             if (a != null) Editor(vm, a) { nav.popBackStack() }
@@ -295,8 +317,17 @@ private fun CreateDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create automation") },
         text = {
-            Column {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") })
+            Column(
+                Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 TextButton(onClick = { expanded = true }) { Text("Template: $template") }
                 DropdownMenu(expanded, { expanded = false }) {
                     FlowViewModel.templates.forEach { t ->
@@ -842,6 +873,9 @@ private fun SettingsScreen(
     prefs: Preferences,
     theme: String,
     diagnostics: List<DiagnosticEntity>,
+    section: String = "",
+    onOpen: (String) -> Unit,
+    onBack: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -891,127 +925,228 @@ private fun SettingsScreen(
                 }
         }
     Content {
-        Title("Settings", "Permissions, backup and local diagnostics.")
-        ChecklistManager(vm)
-        PersonalSettings(vm, prefs)
-        Text("Theme", style = MaterialTheme.typography.titleMedium)
-        FlowRow {
-            listOf("system", "light", "dark").forEach { t ->
-                FilterChip(
-                    selected = theme == t,
-                    onClick = { scope.launch { prefs.theme(t) } },
-                    label = { Text(t) },
+        if (section.isNotEmpty())
+            TextButton(onClick = onBack) {
+                Text(
+                    if (section.startsWith("defaults-")) "‹ Personal defaults"
+                    else if (section in listOf("tests", "diagnostics", "data", "examples"))
+                        "‹ Tools & data"
+                    else "‹ Settings"
                 )
+            }
+        val title =
+            when (section) {
+                "appearance" -> "Appearance"
+                "defaults" -> "Personal defaults"
+                "defaults-scheduling" -> "Scheduling defaults"
+                "defaults-notifications" -> "Notification defaults"
+                "defaults-locations" -> "Location defaults"
+                "defaults-execution" -> "Run behavior"
+                "permissions" -> "Permission health"
+                "checklists" -> "Reusable checklists"
+                "backup" -> "Backup & restore"
+                "tools" -> "Tools & data"
+                "tests" -> "Test actions"
+                "diagnostics" -> "Diagnostics"
+                "data" -> "Data controls"
+                "examples" -> "Example workflows"
+                "about" -> "Help & about"
+                else -> "Settings"
+            }
+        Title(
+            title,
+            if (section.isEmpty() || section in listOf("defaults", "tools"))
+                "Choose a folder to see its settings."
+            else
+                "Settings / ${if(section.startsWith("defaults-")) "Personal defaults / " else if(section in listOf("tests","diagnostics","data","examples")) "Tools & data / " else ""}$title",
+        )
+        val folders =
+            when (section) {
+                "" ->
+                    listOf(
+                        Triple("appearance", "Appearance", "Theme, colors and time format"),
+                        Triple(
+                            "defaults",
+                            "Personal defaults",
+                            "Defaults for new routines and locations",
+                        ),
+                        Triple(
+                            "permissions",
+                            "Permission health",
+                            "Notifications, location and background access",
+                        ),
+                        Triple("checklists", "Reusable checklists", "Manage checklist templates"),
+                        Triple("backup", "Backup & restore", "Export or restore your data"),
+                        Triple(
+                            "tools",
+                            "Tools & data",
+                            "Test actions, diagnostics and data controls",
+                        ),
+                        Triple("about", "Help & about", "Getting started and privacy"),
+                    )
+                "defaults" ->
+                    listOf(
+                        Triple("defaults-scheduling", "Scheduling", "Timezone and missed runs"),
+                        Triple(
+                            "defaults-notifications",
+                            "Notifications",
+                            "Priority and question expiry",
+                        ),
+                        Triple("defaults-locations", "Locations", "Default geofence radius"),
+                        Triple(
+                            "defaults-execution",
+                            "Run behavior",
+                            "Cooldown and overlapping runs",
+                        ),
+                    )
+                "tools" ->
+                    listOf(
+                        Triple("tests", "Test actions", "Try a notification or a simple workflow"),
+                        Triple("diagnostics", "Diagnostics", "View issues and copy a report"),
+                        Triple("data", "Data controls", "History retention, reset and deletion"),
+                        Triple("examples", "Example workflows", "Add editable routines"),
+                    )
+                else -> emptyList()
+            }
+        folders.forEach { (path, label, description) ->
+            OutlinedCard(onClick = { onOpen(path) }, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(label, style = MaterialTheme.typography.titleMedium)
+                        Text(description, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text("›", style = MaterialTheme.typography.titleLarge)
+                }
             }
         }
-        Panel {
-            Text("Permission health", style = MaterialTheme.typography.titleLarge)
-            key(healthVersion) {
-                Text(
-                    "Notifications: ${platform.notificationsAllowed()}\nPrecise location: ${platform.precise()}\nBackground location: ${platform.background()}\nLocation services: ${platform.locationEnabled()}\nGoogle Play Services: ${platform.playServices()}\nExact alarms: ${platform.exact()}"
-                )
-            }
-            Text(
-                "Android power restrictions and workers can delay actions. Inexact alarm fallback is automatic."
-            )
-            if (Build.VERSION.SDK_INT >= 33)
-                TextButton(
-                    onClick = {
-                        permissions.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
-                    }
-                ) {
-                    Text("Allow notifications")
-                }
-            TextButton(
-                onClick = {
-                    permissions.launch(
-                        arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION,
-                        )
+        if (section == "checklists") ChecklistManager(vm)
+        PersonalSettings(vm, prefs, section)
+        if (section == "appearance") {
+            Text("Theme", style = MaterialTheme.typography.titleMedium)
+            FlowRow {
+                listOf("system", "light", "dark").forEach { t ->
+                    FilterChip(
+                        selected = theme == t,
+                        onClick = { scope.launch { prefs.theme(t) } },
+                        label = { Text(t) },
                     )
                 }
-            ) {
-                Text("Allow foreground location")
             }
-            TextButton(onClick = { backgroundExplanation = true }) {
-                Text("Background location setup")
-            }
-            if (Build.VERSION.SDK_INT >= 31)
+        }
+        if (section == "permissions")
+            Panel {
+                Text("Permission health", style = MaterialTheme.typography.titleLarge)
+                key(healthVersion) {
+                    Text(
+                        "Notifications: ${if(platform.notificationsAllowed()) "Allowed" else "Needs access"}\nPrecise location: ${if(platform.precise()) "Allowed" else "Needs access"}\nBackground location: ${if(platform.background()) "Allowed" else "Needs access"}\nLocation services: ${if(platform.locationEnabled()) "On" else "Off"}\nGoogle Play Services: ${if(platform.playServices()) "Ready" else "Unavailable"}\nExact alarms: ${if(platform.exact()) "Allowed" else "Using flexible timing"}"
+                    )
+                }
+                Text(
+                    "Android power restrictions and workers can delay actions. Inexact alarm fallback is automatic."
+                )
+                if (Build.VERSION.SDK_INT >= 33)
+                    TextButton(
+                        onClick = {
+                            permissions.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                        }
+                    ) {
+                        Text("Allow notifications")
+                    }
+                TextButton(
+                    onClick = {
+                        permissions.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                            )
+                        )
+                    }
+                ) {
+                    Text("Allow foreground location")
+                }
+                TextButton(onClick = { backgroundExplanation = true }) {
+                    Text("Background location setup")
+                }
+                if (Build.VERSION.SDK_INT >= 31)
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                    Uri.parse("package:${context.packageName}"),
+                                )
+                            )
+                        }
+                    ) {
+                        Text("Exact alarm special access")
+                    }
                 TextButton(
                     onClick = {
                         context.startActivity(
                             Intent(
-                                Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                                 Uri.parse("package:${context.packageName}"),
                             )
                         )
                     }
                 ) {
-                    Text("Exact alarm special access")
+                    Text("App and battery settings")
                 }
-            TextButton(
-                onClick = {
-                    context.startActivity(
-                        Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.parse("package:${context.packageName}"),
+                TextButton(
+                    onClick = {
+                        healthVersion++
+                        vm.reconcile()
+                    }
+                ) {
+                    Text("Reconcile and refresh")
+                }
+            }
+        if (section == "examples")
+            Panel {
+                Text("Example workflows", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Add eight editable scenarios (ten workflows), including nested choices, scheduled routines, shared preparation state and a reusable checklist. They start disabled. Replace demo coordinates before enabling location triggers."
+                )
+                TextButton(onClick = { vm.addExamples() }) { Text("Add example workflows") }
+            }
+        if (section == "backup")
+            Panel {
+                Text("Local backup", style = MaterialTheme.typography.titleLarge)
+                Column {
+                    listOf("new", "merge", "overwrite").forEach { mode ->
+                        FilterChip(
+                            selected = importMode == mode,
+                            onClick = { importMode = mode },
+                            label = {
+                                Text(
+                                    if (mode == "merge") "Merge by name (keep existing)"
+                                    else if (mode == "overwrite") "Overwrite matching IDs"
+                                    else "New IDs only"
+                                )
+                            },
                         )
-                    )
+                    }
                 }
-            ) {
-                Text("App and battery settings")
-            }
-            TextButton(
-                onClick = {
-                    healthVersion++
-                    vm.reconcile()
-                }
-            ) {
-                Text("Reconcile and refresh")
-            }
-        }
-        Panel {
-            Text("Example workflows", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "Add eight editable scenarios (ten workflows), including nested choices, scheduled routines, shared preparation state and a reusable checklist. They start disabled. Replace demo coordinates before enabling location triggers."
-            )
-            TextButton(onClick = { vm.addExamples() }) { Text("Add example workflows") }
-        }
-        Panel {
-            Text("Local backup", style = MaterialTheme.typography.titleLarge)
-            Column {
-                listOf("new", "merge", "overwrite").forEach { mode ->
-                    FilterChip(
-                        selected = importMode == mode,
-                        onClick = { importMode = mode },
-                        label = {
-                            Text(
-                                if (mode == "merge") "Merge by name (keep existing)"
-                                else if (mode == "overwrite") "Overwrite matching IDs"
-                                else "New IDs only"
-                            )
-                        },
-                    )
+                Text(
+                    "Export workflows, locations, checklist templates, persistent values, recent execution snapshots, trigger ledger and preferences. Imports validate before writing and start disabled; historical active runs are archived as cancelled."
+                )
+                FlowRow {
+                    TextButton(onClick = { export.launch("FlowState-backup.json") }) {
+                        Text("Export")
+                    }
+                    TextButton(
+                        onClick = { import.launch(arrayOf("application/json", "text/plain")) }
+                    ) {
+                        Text("Import")
+                    }
                 }
             }
-            Text(
-                "Export workflows, locations, checklist templates, persistent values, recent execution snapshots, trigger ledger and preferences. Imports validate before writing and start disabled; historical active runs are archived as cancelled."
-            )
-            FlowRow {
-                TextButton(onClick = { export.launch("FlowState-backup.json") }) { Text("Export") }
-                TextButton(onClick = { import.launch(arrayOf("application/json", "text/plain")) }) {
-                    Text("Import")
-                }
+        if (section == "diagnostics") {
+            if (diagnostics.isEmpty()) Text("No recent issues.")
+            diagnostics.take(50).forEach {
+                Text("${date(it.at)}\n${it.message}", style = MaterialTheme.typography.bodySmall)
             }
         }
-        Text("Diagnostics", style = MaterialTheme.typography.titleMedium)
-        diagnostics.forEach {
-            Text("${date(it.at)}\n${it.message}", style = MaterialTheme.typography.bodySmall)
-        }
-        Text(
-            "No account, backend or telemetry. Force-stop blocks delivery until reopening. Geofence accuracy and latency depend on the device."
-        )
     }
     if (backgroundExplanation)
         AlertDialog(

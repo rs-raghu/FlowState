@@ -83,7 +83,22 @@ class AppSmokeTest {
             compose.onNodeWithText("Create automation").assertIsDisplayed()
             navigate("Settings")
             compose.onNodeWithText("Personal defaults").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Test notification").assertDoesNotExist()
+            compose
+                .onNode(hasText("Tools & data") and hasClickAction())
+                .performScrollTo()
+                .performClick()
+            compose
+                .onNode(hasText("Test actions") and hasClickAction())
+                .performScrollTo()
+                .performClick()
             compose.onNodeWithText("Test notification").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Copy diagnostic report").assertDoesNotExist()
+            compose.onNodeWithText("‹ Tools & data").performScrollTo().performClick()
+            compose
+                .onNode(hasText("Diagnostics") and hasClickAction())
+                .performScrollTo()
+                .performClick()
             compose.onNodeWithText("Copy diagnostic report").performScrollTo().assertIsDisplayed()
             scenario!!.recreate()
             compose.onNodeWithText("Copy diagnostic report").performScrollTo().assertIsDisplayed()
