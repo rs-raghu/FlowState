@@ -14,8 +14,8 @@ android {
         minSdk = providers.gradleProperty("flowstate.minSdk").orNull?.toInt() ?: 29
         require(minSdk!! >= 29) { "FlowState requires Android API 29 or later" }
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The process recovery test requires two separate invocations and an external force-stop.
         testInstrumentationRunnerArguments["notClass"] = "dev.flowstate.ProcessRecoveryTest,dev.flowstate.PermissionRecoveryTest"

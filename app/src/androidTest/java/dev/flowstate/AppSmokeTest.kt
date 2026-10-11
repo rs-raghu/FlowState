@@ -1,6 +1,7 @@
 package dev.flowstate
 
 import android.app.NotificationManager
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -26,6 +27,7 @@ class AppSmokeTest {
 
     private var scenario: ActivityScenario<MainActivity>? = null
     private var automationId: String? = null
+    private var locationId: String? = null
 
     @Before fun prepare() = runBlocking { Preferences(app).onboard() }
 
@@ -33,6 +35,7 @@ class AppSmokeTest {
     fun clean() {
         scenario?.close()
         runBlocking { automationId?.let { app.coordinator.delete(it) } }
+        runBlocking { locationId?.let { app.coordinator.deleteLocation(it) } }
     }
 
     private fun open() {
@@ -82,6 +85,7 @@ class AppSmokeTest {
             open()
             compose.onNodeWithText("Create automation").assertIsDisplayed()
             navigate("Settings")
+            saveUiScreenshot(app, "settings-folders-large-text")
             compose.onNodeWithText("Personal defaults").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Test notification").assertDoesNotExist()
             compose
@@ -100,6 +104,7 @@ class AppSmokeTest {
                 .performScrollTo()
                 .performClick()
             compose.onNodeWithText("Copy diagnostic report").performScrollTo().assertIsDisplayed()
+            saveUiScreenshot(app, "settings-diagnostics-large-text")
             scenario!!.recreate()
             compose.onNodeWithText("Copy diagnostic report").performScrollTo().assertIsDisplayed()
         } finally {
@@ -107,6 +112,67 @@ class AppSmokeTest {
                 "settings put system font_scale " +
                     old.takeIf { it.toFloatOrNull() != null }.orEmpty().ifEmpty { "1.0" }
             )
+        }
+    }
+
+    @Test
+    fun mapCanChoosePanZoomRestoreAndSaveLocation() {
+        open()
+        navigate("Locations")
+        compose.onNodeWithText("Add location").performClick()
+        val name = "Map test ${UUID.randomUUID()}"
+        compose.onNodeWithTag("location-name").performTextReplacement(name)
+        compose.onNodeWithTag("location-name").performImeAction()
+        compose.onNodeWithTag("save-location").performClick()
+        compose.onNodeWithTag("location-error").assertExists()
+        compose.onNodeWithTag("location-map").performScrollTo().performTouchInput { click(center) }
+        compose.onNodeWithTag("location-error").assertDoesNotExist()
+        fun pin() =
+            compose
+                .onNodeWithTag("location-pin")
+                .fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.Text]
+                .joinToString()
+        fun scale() =
+            compose
+                .onNodeWithTag("map-scale")
+                .fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.Text]
+                .joinToString()
+        val originalPin = pin()
+        saveUiScreenshot(app, "location-map-overview")
+        val originalScale = scale()
+        repeat(3) { compose.onNodeWithText("Zoom in +").performScrollTo().performClick() }
+        assertNotEquals(originalScale, scale())
+        val zoomed = scale()
+        compose.onNodeWithText("Zoom out −").performClick()
+        assertNotEquals(zoomed, scale())
+        compose.onNodeWithTag("location-map").performScrollTo().performTouchInput {
+            swipe(center, center + Offset(100f, 0f), 600)
+        }
+        compose.onNodeWithTag("location-map").performTouchInput { click(center) }
+        assertNotEquals("Panning changes the coordinate under the center", originalPin, pin())
+        compose.onNodeWithText("Center on pin & show radius").performScrollTo().performClick()
+        compose.onNodeWithTag("location-map").performScrollTo().assertIsDisplayed()
+        val selected = pin()
+        val fitted = scale()
+        saveUiScreenshot(app, "location-map-radius")
+        scenario!!.recreate()
+        compose.onNodeWithTag("location-name").assertTextContains(name)
+        assertEquals(selected, pin())
+        assertEquals(fitted, scale())
+        compose.onNodeWithTag("location-map").performScrollTo()
+        saveUiScreenshot(app, "location-map-restored")
+        compose.onNodeWithTag("save-location").assertIsDisplayed().performClick()
+        compose.waitUntil(15000) {
+            runBlocking { app.database.dao().locations().any { it.name == name } }
+        }
+        val saved = runBlocking { app.database.dao().locations().single { it.name == name } }
+        locationId = saved.id
+        assertTrue(saved.latitude.isFinite() && saved.longitude.isFinite())
+        assertEquals(150f, saved.radius)
+        compose.waitUntil(15000) {
+            compose.onAllNodesWithTag("location-map").fetchSemanticsNodes().isEmpty()
         }
     }
 

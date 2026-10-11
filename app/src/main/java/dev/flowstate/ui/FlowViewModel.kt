@@ -113,33 +113,43 @@ class FlowViewModel @Inject constructor(app: Application) : AndroidViewModel(app
         dwellSeconds: Int = 120,
         cooldownSeconds: Int = 30,
         icon: String = "",
+        onSaved: () -> Unit = {},
+        onError: (String) -> Unit = {},
     ) = work {
-        require(name.isNotBlank() && name.length <= 120)
-        require(
-            latitude.isFinite() &&
-                longitude.isFinite() &&
-                latitude in -90.0..90.0 &&
-                longitude in -180.0..180.0
-        )
-        require(radius.isFinite() && radius in 100f..100000f)
-        val now = System.currentTimeMillis()
-        val old = id?.let { dao.location(it) }
-        application.coordinator.saveLocation(
-            LocationEntity(
-                id ?: UUID.randomUUID().toString(),
-                name,
-                latitude,
-                longitude,
-                radius,
-                description,
-                enabled,
-                old?.created ?: now,
-                now,
-                dwellSeconds = dwellSeconds,
-                cooldownSeconds = cooldownSeconds,
-                icon = icon,
+        try {
+            require(name.isNotBlank() && name.length <= 120)
+            require(
+                latitude.isFinite() &&
+                    longitude.isFinite() &&
+                    latitude in -90.0..90.0 &&
+                    longitude in -180.0..180.0
             )
-        )
+            require(radius.isFinite() && radius in 100f..100000f)
+            val now = System.currentTimeMillis()
+            val old = id?.let { dao.location(it) }
+            application.coordinator.saveLocation(
+                LocationEntity(
+                    id ?: UUID.randomUUID().toString(),
+                    name,
+                    latitude,
+                    longitude,
+                    radius,
+                    description,
+                    enabled,
+                    old?.created ?: now,
+                    now,
+                    dwellSeconds = dwellSeconds,
+                    cooldownSeconds = cooldownSeconds,
+                    icon = icon,
+                )
+            )
+            onSaved()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            onError(e.message ?: "Couldn't save the location.")
+            throw e
+        }
     }
 
     fun deleteLocation(l: LocationEntity) = work {

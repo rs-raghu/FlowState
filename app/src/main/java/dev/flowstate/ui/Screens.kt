@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,14 +23,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.*
-import com.google.android.gms.location.*
-import com.google.android.gms.tasks.CancellationTokenSource
 import dev.flowstate.data.*
 import dev.flowstate.engine.*
 import dev.flowstate.platform.Platform
 import java.time.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.decodeFromString
 
 private val LocalTimeFormat = staticCompositionLocalOf { "system" }
@@ -105,7 +101,7 @@ fun FlowState(vm: FlowViewModel, initialExecution: String?) {
     val locations by vm.locations.collectAsStateWithLifecycle()
     val diagnostics by vm.diagnostics.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
-    var create by remember { mutableStateOf(false) }
+    var create by rememberSaveable { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(initialExecution) }
     val scope = rememberCoroutineScope()
     val snack = remember { SnackbarHostState() }
@@ -496,8 +492,8 @@ private fun Automations(
 
 @Composable
 private fun Locations(vm: FlowViewModel, locations: List<LocationEntity>) {
-    var adding by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<LocationEntity?>(null) }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<LocationEntity?>(null) }
     Content {
         Title("Locations", "Geofences use at least a 100 m radius.")
@@ -506,7 +502,7 @@ private fun Locations(vm: FlowViewModel, locations: List<LocationEntity>) {
         )
         Button(
             onClick = {
-                selected = null
+                selectedId = null
                 adding = true
             }
         ) {
@@ -519,16 +515,13 @@ private fun Locations(vm: FlowViewModel, locations: List<LocationEntity>) {
                     style = MaterialTheme.typography.titleLarge,
                 )
                 Text("${l.latitude}, ${l.longitude} · ${l.radius.toInt()} m")
-                SelectionContainer {
-                    Text("ID: ${l.id}", style = MaterialTheme.typography.bodySmall)
-                }
                 Text(
                     "${l.registration} · ${if(System.currentTimeMillis()-l.eventAt>3600000) "UNKNOWN (stale)" else l.occupancy}"
                 )
                 FlowRow {
                     TextButton(
                         onClick = {
-                            selected = l
+                            selectedId = l.id
                             adding = true
                         }
                     ) {
@@ -538,14 +531,14 @@ private fun Locations(vm: FlowViewModel, locations: List<LocationEntity>) {
                 }
             }
         }
-        if (locations.isEmpty())
-            Text("Add a location and copy its ID into the trigger's Location field.")
+        if (locations.isEmpty()) Text("Add a place, then select its name in a location automation.")
     }
-    if (adding) LocationDialog(vm, selected) { adding = false }
+    if (adding) LocationDialog(vm, locations.find { it.id == selectedId }) { adding = false }
     deleting?.let { l ->
         AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Delete location?") },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
             text = { Text("Locations used by automations cannot be deleted.") },
             confirmButton = {
                 TextButton(
@@ -559,155 +552,6 @@ private fun Locations(vm: FlowViewModel, locations: List<LocationEntity>) {
             },
         )
     }
-}
-
-@Composable
-private fun LocationDialog(vm: FlowViewModel, l: LocationEntity?, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf(l?.name ?: "") }
-    var lat by remember { mutableStateOf(l?.latitude?.toString() ?: "") }
-    var lon by remember { mutableStateOf(l?.longitude?.toString() ?: "") }
-    val defaults by remember {
-        Preferences(vm.application)
-    }
-        .options
-        .collectAsStateWithLifecycle(Preferences.defaults)
-    var radius by
-        remember(l?.id, defaults["radius"]) {
-            mutableStateOf(l?.radius?.toInt()?.toString() ?: defaults.getValue("radius"))
-        }
-    var dwell by remember { mutableStateOf((l?.dwellSeconds ?: 120).toString()) }
-    var cooldown by remember { mutableStateOf((l?.cooldownSeconds ?: 30).toString()) }
-    var description by remember { mutableStateOf(l?.description ?: "") }
-    var icon by remember { mutableStateOf(l?.icon ?: "") }
-    var error by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var enabled by remember { mutableStateOf(l?.enabled ?: true) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (l == null) "Save location" else "Edit location") },
-        text = {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") })
-                OutlinedTextField(
-                    icon,
-                    { if (it.length <= 32) icon = it },
-                    label = { Text("Icon (optional emoji or symbol)") },
-                )
-                OutlinedTextField(lat, { lat = it }, label = { Text("Latitude") })
-                OutlinedTextField(lon, { lon = it }, label = { Text("Longitude") })
-                OutlinedTextField(
-                    radius,
-                    { radius = it },
-                    label = { Text("Radius metres (100–100000)") },
-                )
-                OutlinedTextField(
-                    dwell,
-                    { dwell = it },
-                    label = { Text("Minimum dwell seconds (30–86400)") },
-                )
-                OutlinedTextField(
-                    cooldown,
-                    { cooldown = it },
-                    label = { Text("Location event cooldown seconds (0–86400)") },
-                )
-                LocationMap(
-                    lat.toDoubleOrNull() ?: 20.0,
-                    lon.toDoubleOrNull() ?: 78.0,
-                    radius.toFloatOrNull() ?: 150f,
-                ) { latitude, longitude ->
-                    lat = latitude.toString()
-                    lon = longitude.toString()
-                }
-                FlowRow {
-                    listOf(100, 150, 200, 300, 500, 1000).forEach { r ->
-                        TextButton(onClick = { radius = r.toString() }) { Text("$r m") }
-                    }
-                }
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            try {
-                                require(Platform(context).precise()) {
-                                    "Grant precise location in Settings first"
-                                }
-                                val pos =
-                                    LocationServices.getFusedLocationProviderClient(context)
-                                        .getCurrentLocation(
-                                            Priority.PRIORITY_HIGH_ACCURACY,
-                                            CancellationTokenSource().token,
-                                        )
-                                        .await()
-                                        ?: error("Position unavailable; enter coordinates manually")
-                                lat = pos.latitude.toString()
-                                lon = pos.longitude.toString()
-                            } catch (e: SecurityException) {
-                                error =
-                                    "Location permission was revoked; grant it again in Settings"
-                            } catch (e: Exception) {
-                                error = e.message
-                            }
-                        }
-                    }
-                ) {
-                    Text("Use device position")
-                }
-                OutlinedTextField(
-                    description,
-                    { description = it },
-                    label = { Text("Description") },
-                )
-                FlowRow {
-                    Checkbox(
-                        enabled,
-                        { enabled = it },
-                        modifier = Modifier.semantics { contentDescription = "Location enabled" },
-                    )
-                    Text("Location enabled")
-                }
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    try {
-                        val latitude = lat.toDouble()
-                        val longitude = lon.toDouble()
-                        val r = radius.toFloat()
-                        require(
-                            name.isNotBlank() &&
-                                latitude in -90.0..90.0 &&
-                                longitude in -180.0..180.0 &&
-                                r in 100f..100000f
-                        )
-                        require(dwell.toInt() in 30..86400 && cooldown.toInt() in 0..86400)
-                        vm.saveLocation(
-                            l?.id,
-                            name,
-                            latitude,
-                            longitude,
-                            r,
-                            description,
-                            enabled,
-                            dwell.toInt(),
-                            cooldown.toInt(),
-                            icon,
-                        )
-                        onDismiss()
-                    } catch (e: Exception) {
-                        error = "Enter a name, valid coordinates and radius ≥100 m"
-                    }
-                }
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }
 
 @Composable

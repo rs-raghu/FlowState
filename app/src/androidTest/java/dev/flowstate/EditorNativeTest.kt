@@ -27,7 +27,7 @@ class EditorNativeTest {
         InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
             as FlowStateApp
     private var scenario: ActivityScenario<MainActivity>? = null
-    private val id = UUID.randomUUID().toString()
+    private var id = UUID.randomUUID().toString()
 
     private fun web(view: View): WebView? =
         if (view is WebView) view
@@ -70,6 +70,50 @@ class EditorNativeTest {
         scenario?.close()
         EditorDrafts(app).clear(id)
         runBlocking { app.coordinator.delete(id) }
+    }
+
+    @Test
+    fun createFromDashboardBrowseBlocksSaveAndRun() {
+        runBlocking { Preferences(app).onboard() }
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        compose.waitUntil(15000) {
+            compose.onAllNodesWithText("Create automation").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Create automation").performClick()
+        val name = "Created through UI ${UUID.randomUUID()}"
+        compose.onNode(hasSetTextAction()).performTextReplacement(name)
+        compose.onNodeWithText("Create").performClick()
+        compose.waitUntil(15000) {
+            runBlocking { app.database.dao().automations().any { it.name == name } }
+        }
+        id = runBlocking { app.database.dao().automations().single { it.name == name }.id }
+        ready()
+        assertEquals("0", js("document.querySelectorAll('#search').length"))
+        assertEquals("32", js("document.querySelectorAll('.block-choice').length"))
+        // Exercise the same HTML button as a tap, with the real WebView/native save bridge.
+        js("document.querySelector('[data-block=fs_message]').click()")
+        assertTrue(js("JSON.stringify(FlowEditor.snapshot())").contains("fs_message"))
+        js("document.getElementById('save').click()")
+        compose.waitUntil(15000) {
+            runBlocking { app.database.dao().automation(id)!!.version >= 2 }
+        }
+        assertFalse(
+            js("document.getElementById('status').textContent")
+                .contains("uncaught", ignoreCase = true)
+        )
+        saveUiScreenshot(app, "editor-created-workflow")
+        js("document.getElementById('close').click()")
+        compose.waitUntil(15000) {
+            compose.onAllNodesWithText("Create automation").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNode(hasText("Automations") and hasClickAction()).performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement(name)
+        compose.onNodeWithText("Run").performScrollTo().performClick()
+        compose.waitUntil(15000) {
+            runBlocking {
+                app.database.dao().executionsForAutomation(id).any { it.state == "COMPLETED" }
+            }
+        }
     }
 
     @Test

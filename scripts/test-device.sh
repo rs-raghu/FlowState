@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p app/build/reports/device
-trap 'adb logcat -d > app/build/reports/device/logcat.txt || true' EXIT
+trap 'adb logcat -d > app/build/reports/device/logcat.txt || true; adb pull /sdcard/Android/data/dev.flowstate/files/ui-reports app/build/reports/device/ || true' EXIT
 api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
 bash ./gradlew :app:connectedDebugAndroidTest --max-workers=2 --console=plain
+adb pull /sdcard/Android/data/dev.flowstate/files/ui-reports app/build/reports/device/ui-reports
 bash ./scripts/test-process-recovery.sh
 # Revocation can kill the application, so apply it outside instrumentation.
 if [ "$api" -ge 33 ]; then
